@@ -1,0 +1,2 @@
+# Pasta destinada aos pesos treinados do modelo (`cnn_esteira.pt`).
+# Após treinar (localmente ou no Google Colab), salve `cnn_esteira.pt` aqui antes do deploy.
