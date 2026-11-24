@@ -1,4 +1,4 @@
-"""Script de treinamento e avaliação da CNN construída do zero."""
+"""Script de treinamento e avaliação da CNN construída do zero (3 classes)."""
 
 from __future__ import annotations
 
@@ -64,11 +64,11 @@ class GeometricShapesDataset(Dataset):
             else:
                 tensor = get_eval_transform()(rgb_img)
 
-        return tensor, torch.tensor(label, dtype=torch.float32)
+        return tensor, torch.tensor(label, dtype=torch.long)
 
 
 def load_dataset_paths(data_dir: Path, required: bool = True) -> Tuple[List[Path], List[int]]:
-    """Carrega caminhos das imagens mapeando 0 = piramide e 1 = cubo."""
+    """Carrega caminhos das imagens mapeando 0 = piramide, 1 = cubo, 2 = outros."""
     image_paths: List[Path] = []
     labels: List[int] = []
 
@@ -126,8 +126,7 @@ def run_epoch(
 
             batch_size = targets.size(0)
             running_loss += loss.item() * batch_size
-            probs = torch.sigmoid(logits)
-            preds = (probs >= 0.5).float()
+            preds = torch.argmax(logits, dim=1)
             correct += (preds == targets).sum().item()
             total += batch_size
 
@@ -150,14 +149,15 @@ def evaluate_on_test(
         for inputs, targets in loader:
             inputs = inputs.to(device)
             logits = model(inputs)
-            probs = torch.sigmoid(logits)
-            preds = (probs >= 0.5).long().cpu().tolist()
+            preds = torch.argmax(logits, dim=1).cpu().tolist()
 
             y_pred.extend(preds)
-            y_true.extend(targets.long().tolist())
+            y_true.extend(targets.tolist())
 
     acc = accuracy_score(y_true, y_pred)
-    target_names = [IDX_TO_CLASS[0], IDX_TO_CLASS[1]]
+    num_classes = len(CLASS_TO_IDX)
+    label_ids = list(range(num_classes))
+    target_names = [IDX_TO_CLASS[i] for i in label_ids]
 
     print("\n" + "=" * 60)
     print("AVALIAÇÃO FINAL NO CONJUNTO DE TESTE (15%)")
@@ -168,27 +168,28 @@ def evaluate_on_test(
         classification_report(
             y_true,
             y_pred,
-            labels=[0, 1],
+            labels=label_ids,
             target_names=target_names,
             digits=4,
             zero_division=0,
         )
     )
     print("Matriz de Confusão (linhas = real, colunas = predito):")
-    print(f"Ordem das classes: [0={IDX_TO_CLASS[0]}, 1={IDX_TO_CLASS[1]}]")
-    print(confusion_matrix(y_true, y_pred, labels=[0, 1]))
+    ordem = ", ".join(f"{i}={IDX_TO_CLASS[i]}" for i in label_ids)
+    print(f"Ordem das classes: [{ordem}]")
+    print(confusion_matrix(y_true, y_pred, labels=label_ids))
     print("=" * 60)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Treina a CNN do zero para classificação de pirâmide (0) vs cubo (1)."
+        description="Treina a CNN do zero para pirâmide (0), cubo (1) e outros (2 -> y=-1 na API)."
     )
     parser.add_argument(
         "--data-dir",
         type=Path,
         default=PROJECT_ROOT / "data",
-        help="Diretório contendo as pastas 'piramide' e 'cubo'.",
+        help="Diretório contendo as pastas 'piramide', 'cubo' e 'outros'.",
     )
     parser.add_argument(
         "--synthetic-dir",
@@ -207,7 +208,7 @@ def parse_args() -> argparse.Namespace:
         default=PROJECT_ROOT / "model" / "cnn_esteira.pt",
         help="Caminho de saída para os melhores pesos treinados.",
     )
-    parser.add_argument("--epochs", type=int, default=50, help="Número de épocas.")
+    parser.add_argument("--epochs", type=int, default=55, help="Número de épocas.")
     parser.add_argument("--batch-size", type=int, default=8, help="Tamanho do batch.")
     parser.add_argument("--lr", type=float, default=1e-3, help="Taxa de aprendizado do Adam.")
     parser.add_argument("--image-size", type=int, default=IMAGE_SIZE, help="Resolução quadrada de entrada.")
@@ -220,16 +221,16 @@ def main() -> None:
     seed_everything(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Dispositivo utilizado: {device}")
+    num_classes = len(CLASS_TO_IDX)
+    print(f"Dispositivo utilizado: {device} | Classes: {num_classes} ({CLASS_TO_IDX})")
 
-    image_paths, labels = load_dataset_paths(args.data_dir)
+    image_paths, labels = load_dataset_paths(args.data_dir, required=True)
     total_samples = len(image_paths)
-    count_0 = sum(1 for y in labels if y == 0)
-    count_1 = sum(1 for y in labels if y == 1)
-    print(
-        f"Total de imagens: {total_samples} "
-        f"(0={IDX_TO_CLASS[0]}: {count_0}, 1={IDX_TO_CLASS[1]}: {count_1})"
+    counts_str = ", ".join(
+        f"{i}={IDX_TO_CLASS[i]}: {sum(1 for y in labels if y == i)}"
+        for i in range(num_classes)
     )
+    print(f"Total de imagens base: {total_samples} ({counts_str})")
 
     # Divisão estratificada exata: 70% treino, 15% validação, 15% teste
     x_train, x_temp, y_train, y_temp = train_test_split(
@@ -248,7 +249,7 @@ def main() -> None:
     )
 
     print(
-        f"Split estratificado (imagens reais) -> Treino: {len(x_train)} ({len(x_train)/total_samples:.0%}) | "
+        f"Split estratificado (base) -> Treino: {len(x_train)} ({len(x_train)/total_samples:.0%}) | "
         f"Validação: {len(x_val)} ({len(x_val)/total_samples:.0%}) | "
         f"Teste: {len(x_test)} ({len(x_test)/total_samples:.0%})"
     )
@@ -262,14 +263,15 @@ def main() -> None:
     if not args.no_synthetic and args.synthetic_dir.is_dir():
         synth_paths, synth_labels = load_dataset_paths(args.synthetic_dir, required=False)
         if synth_paths:
-            synth_0 = sum(1 for y in synth_labels if y == 0)
-            synth_1 = sum(1 for y in synth_labels if y == 1)
+            synth_str = ", ".join(
+                f"{i}={IDX_TO_CLASS[i]}: {sum(1 for y in synth_labels if y == i)}"
+                for i in range(num_classes)
+            )
             x_train = list(x_train) + synth_paths
             y_train = list(y_train) + synth_labels
             print(
                 f"Imagens sintéticas adicionadas APENAS ao treino: +{len(synth_paths)} "
-                f"(0={IDX_TO_CLASS[0]}: {synth_0}, 1={IDX_TO_CLASS[1]}: {synth_1}) | "
-                f"Total treino: {len(x_train)}"
+                f"({synth_str}) | Total treino: {len(x_train)}"
             )
 
     train_dataset = GeometricShapesDataset(
@@ -282,19 +284,24 @@ def main() -> None:
         x_test, y_test, transform=get_eval_transform(args.image_size)
     )
 
-    # Balanceia amostragem: 50% fotos reais (25% pirâmide + 25% cubo) e 50% sintéticas
+    # Balanceia amostragem: 50% imagens base e 50% sintéticas, igualmente distribuídas entre as 3 classes
     if synth_paths:
-        real_c0 = max(sum(1 for y in real_y_train if y == 0), 1)
-        real_c1 = max(sum(1 for y in real_y_train if y == 1), 1)
-        syn_c0 = max(sum(1 for y in synth_labels if y == 0), 1)
-        syn_c1 = max(sum(1 for y in synth_labels if y == 1), 1)
+        real_counts = {
+            c: max(sum(1 for y in real_y_train if y == c), 1)
+            for c in range(num_classes)
+        }
+        synth_counts = {
+            c: max(sum(1 for y in synth_labels if y == c), 1)
+            for c in range(num_classes)
+        }
+        per_class_share = 0.5 / num_classes
 
         sample_weights = []
         for idx, y in enumerate(y_train):
             if idx < n_real_train:
-                sample_weights.append(0.25 / (real_c0 if y == 0 else real_c1))
+                sample_weights.append(per_class_share / real_counts[y])
             else:
-                sample_weights.append(0.25 / (syn_c0 if y == 0 else syn_c1))
+                sample_weights.append(per_class_share / synth_counts[y])
 
         sampler = WeightedRandomSampler(
             weights=torch.tensor(sample_weights, dtype=torch.double),
@@ -308,8 +315,8 @@ def main() -> None:
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
-    model = EsteiraCNN().to(device)
-    criterion = nn.BCEWithLogitsLoss()
+    model = EsteiraCNN(num_classes=num_classes).to(device)
+    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=1e-5
@@ -334,6 +341,7 @@ def main() -> None:
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
+                    "num_classes": num_classes,
                     "image_size": args.image_size,
                     "class_to_idx": CLASS_TO_IDX,
                     "idx_to_class": IDX_TO_CLASS,

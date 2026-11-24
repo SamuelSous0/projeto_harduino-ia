@@ -5,6 +5,13 @@ __pycache__
 *.pyc
 *.pyo
 data/
+esp32/
 train_colab.ipynb
 CONTEXT.MD
 README.md
+como_usar_a_ia.md
+explicacao_src.md
+explicacao_src.pdf
+resumo_projeto.pdf
+codigo_espion.c
+bridge_celular_pc.html

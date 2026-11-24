@@ -9,6 +9,7 @@ from pathlib import Path
 
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
 from src.model import EsteiraCNN
@@ -16,6 +17,7 @@ from src.preprocess import (
     CLASS_TO_ACTION,
     IDX_TO_CLASS,
     IMAGE_SIZE,
+    OUTROS_CLASS_IDX,
     UNKNOWN_CLASS_IDX,
     UNKNOWN_CLASS_NAME,
     preprocess_pil_image,
@@ -32,17 +34,22 @@ async def lifespan(app: FastAPI):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     app.state.device = device
     app.state.model = None
+    app.state.num_classes = 3
     app.state.image_size = IMAGE_SIZE
     app.state.confidence_threshold = CONFIDENCE_THRESHOLD
 
     if MODEL_PATH.is_file():
         checkpoint = torch.load(MODEL_PATH, map_location=device, weights_only=True)
-        model = EsteiraCNN().to(device)
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+            num_classes = int(checkpoint.get("num_classes", 1))
+            model = EsteiraCNN(num_classes=num_classes).to(device)
             model.load_state_dict(checkpoint["model_state_dict"])
             app.state.image_size = int(checkpoint.get("image_size", IMAGE_SIZE))
+            app.state.num_classes = num_classes
         else:
+            model = EsteiraCNN(num_classes=1).to(device)
             model.load_state_dict(checkpoint)
+            app.state.num_classes = 1
         model.eval()
         app.state.model = model
 
@@ -54,11 +61,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="API Esteira Seletora - CNN PyTorch + ESP32",
     description=(
-        "Classificação binária de peças (pirâmide vs cubo) com rejeição por limiar "
-        "de confiança para objetos não reconhecidos (passar reto na esteira)."
+        "Classificação de peças (pirâmide, cubo e não reconhecido/outros) com "
+        "CNN construída do zero em PyTorch para controle de esteira com ESP32."
     ),
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
+)
+
+# Permite chamadas diretas de páginas web / câmera no navegador (PC ou celular)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -69,6 +84,7 @@ def health_check():
     return {
         "status": "ok" if modelo_carregado else "degraded",
         "modelo_carregado": modelo_carregado,
+        "num_classes": app.state.num_classes,
         "modelo_path": str(MODEL_PATH),
         "dispositivo": str(app.state.device),
         "confidence_threshold": app.state.confidence_threshold,
@@ -77,7 +93,7 @@ def health_check():
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    """Recebe uma imagem enviada pelo ESP32 e retorna a classe, código e ação da esteira.
+    """Recebe uma imagem e retorna a classe, código e ação da esteira.
 
     Retornos possíveis:
     - y = 0  -> classe: "piramide",        acao: "desviar_piramide"
@@ -109,17 +125,21 @@ async def predict(file: UploadFile = File(...)):
         ) from exc
 
     with torch.no_grad():
-        logit = model(input_tensor)
-        prob_cubo = torch.sigmoid(logit).item()
+        logits = model(input_tensor)
 
-    if prob_cubo >= 0.5:
-        raw_y = 1
-        confianca = prob_cubo
-    else:
-        raw_y = 0
-        confianca = 1.0 - prob_cubo
+        if app.state.num_classes == 1:
+            prob_cubo = torch.sigmoid(logits).item()
+            if prob_cubo >= 0.5:
+                raw_y, confianca = 1, prob_cubo
+            else:
+                raw_y, confianca = 0, 1.0 - prob_cubo
+        else:
+            probs = torch.softmax(logits, dim=1)[0]
+            conf_tensor, idx_tensor = torch.max(probs, dim=0)
+            raw_y = int(idx_tensor.item())
+            confianca = float(conf_tensor.item())
 
-    if confianca < app.state.confidence_threshold:
+    if raw_y == OUTROS_CLASS_IDX or confianca < app.state.confidence_threshold:
         return {
             "classe": UNKNOWN_CLASS_NAME,
             "y": UNKNOWN_CLASS_IDX,

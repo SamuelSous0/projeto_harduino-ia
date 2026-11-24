@@ -11,3 +11,14 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+
+# Código ESP32 e ponte webcam/celular (não necessários no repositório da API)
+esp32/
+codigo_espion.c
+bridge_celular_pc.html
+
+# Arquivos de explicação e resumos locais
+como_usar_a_ia.md
+explicacao_src.md
+explicacao_src.pdf
+resumo_projeto.pdf

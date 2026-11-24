@@ -5,17 +5,18 @@ import torch.nn as nn
 
 
 class EsteiraCNN(nn.Module):
-    """CNN customizada para classificação binária (pirâmide vs cubo).
+    """CNN customizada para classificação de peças da esteira (pirâmide, cubo e outros).
 
     Arquitetura:
     - 3 blocos convolucionais: Conv2d -> BatchNorm2d -> ReLU -> MaxPool2d
     - AdaptiveAvgPool2d para independência de resolução de entrada
-    - Cabeça classificadora totalmente conectada com Dropout e saída de 1 logit
-      para uso com BCEWithLogitsLoss.
+    - Cabeça classificadora totalmente conectada com Dropout e saída configurável
+      (3 classes com CrossEntropyLoss por padrão).
     """
 
-    def __init__(self, dropout_rate: float = 0.35) -> None:
+    def __init__(self, num_classes: int = 3, dropout_rate: float = 0.35) -> None:
         super().__init__()
+        self.num_classes = num_classes
 
         self.features = nn.Sequential(
             # Bloco 1: 3 -> 16 canais
@@ -43,10 +44,12 @@ class EsteiraCNN(nn.Module):
             nn.Linear(64 * 4 * 4, 64),
             nn.ReLU(inplace=True),
             nn.Dropout(p=dropout_rate * 0.7),
-            nn.Linear(64, 1),
+            nn.Linear(64, num_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
         logits = self.classifier(x)
-        return logits.squeeze(1)
+        if self.num_classes == 1:
+            return logits.squeeze(1)
+        return logits

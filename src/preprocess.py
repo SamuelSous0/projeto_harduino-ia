@@ -10,13 +10,15 @@ IMAGE_SIZE: int = 128
 NORMALIZE_MEAN = (0.5, 0.5, 0.5)
 NORMALIZE_STD = (0.5, 0.5, 0.5)
 
-# Mapeamento oficial de classes (compartilhado entre treino e API)
+# Mapeamento oficial de classes (3 classes: piramide, cubo e outros -> y=-1 na API)
 CLASS_TO_IDX: Dict[str, int] = {
     "piramide": 0,
     "cubo": 1,
+    "outros": 2,
 }
 IDX_TO_CLASS: Dict[int, str] = {v: k for k, v in CLASS_TO_IDX.items()}
 
+OUTROS_CLASS_IDX: int = 2
 UNKNOWN_CLASS_NAME: str = "nao_reconhecido"
 UNKNOWN_CLASS_IDX: int = -1
 
