@@ -12,8 +12,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Código ESP32 local (mantendo pontes HTML/Python versionadas na branch)
-esp32/
+# Código ESP32 temporário
 codigo_espion.c
 
 # Arquivos de explicação e resumos locais
