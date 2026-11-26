@@ -339,7 +339,7 @@
   <header>
     <div>
       <h1>Esteira Seletora IA — Painel Web MQTT Seguro (WSS)</h1>
-      <div class="sub">Modo Invariante a Cor (P&B + Geometria de Arestas Sobel): Reconhece Cubo e Pirâmide de QUALQUER COR</div>
+      <div class="sub">Filtro Rigoroso de Rejeição de Cena (Objetos Aleatórios → Outros y=-1) + Geometria 1:1</div>
     </div>
     <div class="status-pills">
       <span class="pill"><span id="dotApi" class="dot"></span> IA Render: <span id="txtApi">Verificando...</span></span>
@@ -352,27 +352,25 @@
     <!-- ESQUERDA: CÂMERA AO VIVO COM MIRA QUADRADA 1:1 -->
     <section class="card">
       <h2>
-        <span>Visualização & Geometria Pura (Invariante a Cor)</span>
-        <span style="font-size:0.78rem;color:var(--muted);">Cubo/Pirâmide Azul ou Branco</span>
+        <span>Visualização & Detecção de Peça Isolada na Esteira</span>
+        <span id="isolationBadge" style="font-size:0.76rem;color:var(--muted);">Aguardando câmera</span>
       </h2>
 
       <div class="video-wrap">
         <video id="video" autoplay playsinline muted></video>
-        <!-- Canvas colorido 128x128 para segmentar a peça contra o fundo da esteira -->
         <canvas id="colorCanvas" width="128" height="128" style="display:none;"></canvas>
-        <!-- Canvas P&B 256x256 enviado para a CNN do Render (anula viés de cor azul/branco do dataset!) -->
         <canvas id="canvas" width="256" height="256" style="display:none;"></canvas>
 
         <div id="roiGuide" class="roi-guide">
-          <span>CENTRALIZE A PEÇA AQUI</span>
+          <span>POSICIONE A PEÇA ISOLADA AQUI</span>
         </div>
 
-        <div class="crop-preview-box" title="Visão P&B invariante a cor enviada para a CNN">
+        <div class="crop-preview-box" title="Recorte analisado pela IA">
           <canvas id="miniCanvas" width="128" height="128"></canvas>
         </div>
 
         <div class="video-overlay">
-          <div class="badge-overlay" id="overlayMode">Modo: Geometria Pura (Qualquer Cor)</div>
+          <div class="badge-overlay" id="overlayMode">Modo: Filtro Rigoroso Ativo</div>
           <div class="badge-overlay" id="overlayLatency">IA: -- ms</div>
         </div>
 
@@ -448,8 +446,8 @@
           <input type="text" id="mqttBrokerUrl" value="wss://broker.hivemq.com:8884/mqtt" />
         </label>
         <label>
-          Limiar Mínimo Pirâmide/Cubo (<span id="threshTxt">54%</span>)
-          <input type="range" id="localThreshold" min="45" max="85" step="1" value="54" />
+          Rigor para Aceitar Peça (<span id="threshTxt">76%</span>)
+          <input type="range" id="localThreshold" min="60" max="92" step="1" value="76" />
         </label>
       </div>
 
@@ -506,6 +504,7 @@
     const miniCanvas = document.getElementById("miniCanvas");
     const miniCtx = miniCanvas.getContext("2d", { willReadFrequently: true });
     const roiGuide = document.getElementById("roiGuide");
+    const isolationBadge = document.getElementById("isolationBadge");
 
     const cameraSelect = document.getElementById("cameraSelect");
     const cropZoomInput = document.getElementById("cropZoom");
@@ -614,23 +613,28 @@
     }
 
     // ============================================================================
-    // ANALISADOR 100% GEOMÉTRICO (INVARIANTE A COR: FUNCIONA COM AZUL, BRANCO, ETC.)
+    // FILTRO RIGOROSO DE ISOLAMENTO DE PEÇA & GEOMETRIA (REJEITA CENAS DA CASA)
     // ============================================================================
-    // Analisa apenas a FORMA (silhueta + ângulos das arestas Sobel), ignorando se a peça é azul ou branca!
-    function analyzePureGeometry128() {
+    // Uma peça válida na esteira (Cubo ou Pirâmide, azul ou branca) DEVE:
+    // 1. Estar cercada por um fundo relativamente uniforme nas bordas da mira (borderUniformity).
+    //    Se as 4 bordas da mira tiverem muitas cores/objetos diferentes (apontando para a casa/quarto/mão), é REJEITADA como OUTROS!
+    // 2. Ocupar entre 8% e 68% do centro da mira (nem vazio <8%, nem um objeto gigante/parede/rosto >68% que invade toda a borda).
+    // 3. Ter superfície geométrica limpa (não ter excesso de micro-texturas/bordas caóticas típicas de objetos aleatórios da casa).
+    function analyzeIsolatedShape128() {
       const imgData = colorCtx.getImageData(0, 0, 128, 128);
       const d = imgData.data;
 
-      // 1. Estima o fundo da esteira usando a borda externa (anel de 10px)
+      // 1. Analisa o anel externo (borda de 10px da mira) para verificar se há um fundo de esteira/mesa uniforme
       let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
+      const borderSamples = [];
       for (let y = 0; y < 128; y += 2) {
         for (let x = 0; x < 128; x += 2) {
           if (x < 10 || x > 117 || y < 10 || y > 117) {
             const idx = (y * 128 + x) * 4;
-            bgR += d[idx];
-            bgG += d[idx + 1];
-            bgB += d[idx + 2];
+            const r = d[idx], g = d[idx + 1], b = d[idx + 2];
+            bgR += r; bgG += g; bgB += b;
             bgCount++;
+            borderSamples.push([r, g, b]);
           }
         }
       }
@@ -638,16 +642,26 @@
       bgG /= Math.max(1, bgCount);
       bgB /= Math.max(1, bgCount);
 
+      // Calcula a variação/bagunça na borda da mira (se a borda inteira está cheia de móveis/objetos da casa)
+      let borderVariance = 0;
+      for (let i = 0; i < borderSamples.length; i++) {
+        const [r, g, b] = borderSamples[i];
+        borderVariance += (Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB));
+      }
+      borderVariance /= Math.max(1, borderSamples.length);
+
       if (calibratedBgProfile) {
-        bgR = bgR * 0.4 + calibratedBgProfile.r * 0.6;
-        bgG = bgG * 0.4 + calibratedBgProfile.g * 0.6;
-        bgB = bgB * 0.4 + calibratedBgProfile.b * 0.6;
+        bgR = bgR * 0.35 + calibratedBgProfile.r * 0.65;
+        bgG = bgG * 0.35 + calibratedBgProfile.g * 0.65;
+        bgB = bgB * 0.35 + calibratedBgProfile.b * 0.65;
       }
 
-      // 2. Cria mapa de luminância e máscara binária do objeto contra o fundo da esteira
+      // 2. Segmenta o objeto central contra o fundo da borda
       const gray = new Float32Array(128 * 128);
       const mask = new Uint8Array(128 * 128);
       let fgCount = 0;
+      let borderTouchCount = 0;
+      let totalBorderCheck = 0;
       const rowLeft = new Array(128).fill(999);
       const rowRight = new Array(128).fill(-1);
       let minY = 999, maxY = -1, minX = 999, maxX = -1;
@@ -658,80 +672,65 @@
           const r = d[idx], g = d[idx + 1], b = d[idx + 2];
           gray[y * 128 + x] = 0.299 * r + 0.587 * g + 0.114 * b;
 
-          if (x >= 12 && x < 116 && y >= 12 && y < 116) {
-            const diffBg = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
-            if (diffBg > 52) {
-              mask[y * 128 + x] = 1;
-              fgCount++;
-              if (x < rowLeft[y]) rowLeft[y] = x;
-              if (x > rowRight[y]) rowRight[y] = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-            }
+          const diffBg = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+          const isFg = diffBg > 58;
+
+          if (x <= 8 || x >= 119 || y <= 8 || y >= 119) {
+            totalBorderCheck++;
+            if (isFg) borderTouchCount++;
+          }
+
+          if (x >= 10 && x < 118 && y >= 10 && y < 118 && isFg) {
+            mask[y * 128 + x] = 1;
+            fgCount++;
+            if (x < rowLeft[y]) rowLeft[y] = x;
+            if (x > rowRight[y]) rowRight[y] = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
           }
         }
       }
 
-      const areaRatio = fgCount / (104 * 104);
-      if (areaRatio < 0.055) {
-        // Esteira vazia!
-        return { piramide: 0.05, cubo: 0.05, outros: 0.90, empty: true };
+      const areaRatio = fgCount / (108 * 108);
+      const borderTouchRatio = borderTouchCount / Math.max(1, totalBorderCheck);
+
+      // REJEIÇÃO 1: Esteira vazia (< 7% de área ocupada)
+      if (areaRatio < 0.07) {
+        isolationBadge.textContent = "Cena: Esteira Vazia → Outros";
+        isolationBadge.style.color = "var(--outros)";
+        return { isIsolatedPiece: false, reason: "vazio", piramide: 0.04, cubo: 0.04, outros: 0.92 };
       }
 
-      // 3. Análise da Silhueta (Perfil de largura do topo até a base + Extent/Preenchimento da Bounding Box)
+      // REJEIÇÃO 2: Cena complexa da casa / objeto grande cortando as bordas (> 70% da área ou borda muito poluída)
+      if (areaRatio > 0.72 || borderVariance > 78 || borderTouchRatio > 0.38) {
+        isolationBadge.textContent = "Cena: Ambiente/Objeto Não-Isolado → Outros";
+        isolationBadge.style.color = "var(--outros)";
+        return { isIsolatedPiece: false, reason: "ambiente_casa", piramide: 0.08, cubo: 0.08, outros: 0.84 };
+      }
+
+      // 3. Análise da Silhueta e das Arestas Internas (Sobel)
       const bboxW = Math.max(1, maxX - minX + 1);
       const bboxH = Math.max(1, maxY - minY + 1);
-      const extent = fgCount / (bboxW * bboxH); // Triângulo ~0.50 | Esfera ~0.78 | Cubo ~0.72-0.88
+      const aspect = bboxW / bboxH;
+      const extent = fgCount / (bboxW * bboxH);
 
-      const validRows = [];
-      for (let y = minY; y <= maxY; y++) {
-        const w = rowRight[y] - rowLeft[y];
-        if (w >= 6) validRows.push(w);
+      // Peças reais (cubo/pirâmide) têm proporção razoavelmente compacta (aspect entre 0.52 e 1.85)
+      if (aspect < 0.48 || aspect > 1.95 || extent < 0.36) {
+        isolationBadge.textContent = "Cena: Formato Irregular → Outros";
+        isolationBadge.style.color = "var(--outros)";
+        return { isIsolatedPiece: false, reason: "formato_irregular", piramide: 0.09, cubo: 0.09, outros: 0.82 };
       }
 
-      let taperScore = 0;      // Afunilamento linear típico de pirâmide/triângulo
-      let blockScore = 0;      // Largura constante com quinas típica de cubo
-      let roundCurveScore = 0; // Curvatura suave circular típica de esfera/outros
+      // Verifica se o objeto é sólido/contínuo por dentro (peça real) ou cheio de buracos/texturas (objeto aleatório)
+      let strongEdgesCount = 0;
+      let orthoEnergy = 0;
+      let diagEnergy = 0;
+      const angleBins = new Float32Array(9);
 
-      if (validRows.length >= 14) {
-        const n = validRows.length;
-        const maxW = Math.max(...validRows, 1);
-        const w15 = validRows[Math.floor(n * 0.15)] / maxW;
-        const w30 = validRows[Math.floor(n * 0.30)] / maxW;
-        const w50 = validRows[Math.floor(n * 0.50)] / maxW;
-        const w70 = validRows[Math.floor(n * 0.70)] / maxW;
-        const w85 = validRows[Math.floor(n * 0.85)] / maxW;
-
-        // Verifica se afunila de baixo para cima (pirâmide em pé) ou de cima para baixo
-        const monotonicUp = (w15 < w50 - 0.12) && (w50 < w85 - 0.08) && (w15 < 0.58);
-        const monotonicDown = (w85 < w50 - 0.12) && (w50 < w15 - 0.08) && (w85 < 0.58);
-        const linearMid = (w15 + w85) * 0.5;
-        const bulge = w50 - linearMid; // Esfera tem barriga curva (bulge > 0.18 e simétrica w15 ~= w85)
-
-        if ((monotonicUp || monotonicDown) && bulge < 0.15) {
-          taperScore = 0.85;
-        }
-        if (Math.abs(w15 - w85) < 0.18 && bulge > 0.18 && w15 < 0.74 && w85 < 0.74) {
-          roundCurveScore = 0.82;
-        }
-        if (w15 > 0.64 && w30 > 0.74 && w50 > 0.78 && w70 > 0.74 && w85 > 0.64 && bulge < 0.16) {
-          blockScore = 0.82;
-        }
-      }
-
-      // 4. Histograma de Orientação de Arestas (Sobel Gradient Orientation)
-      // - Pirâmide tem fortes arestas DIAGONAIS convergentes (25° a 70°), tanto vista de lado quanto vista de cima (o "X" das 4 faces triangulares!)
-      // - Cubo tem predominância de arestas ORTOGONAIS/PARALELAS (0°-20° e 75°-90°)
-      // - Esfera tem distribuição uniforme em todos os ângulos (isotrópica)
-      let orthoEnergy = 0; // Arestas próximas de 0° (horizontal) ou 90° (vertical)
-      let diagEnergy = 0;  // Arestas inclinadas de pirâmide (28° a 68°)
-      const angleBins = new Float32Array(9); // 9 bins de 20° (0..180°)
-
-      for (let y = Math.max(14, minY); y <= Math.min(113, maxY); y++) {
-        for (let x = Math.max(14, minX); x <= Math.min(113, maxX); x++) {
-          // Analisa apenas dentro ou na borda da peça segmentada
+      for (let y = Math.max(12, minY); y <= Math.min(115, maxY); y++) {
+        for (let x = Math.max(12, minX); x <= Math.min(115, maxX); x++) {
           if (!mask[y * 128 + x] && !mask[(y - 1) * 128 + x] && !mask[(y + 1) * 128 + x]) continue;
 
           const gx =
@@ -744,19 +743,63 @@
             + gray[(y + 1) * 128 + (x - 1)] + 2 * gray[(y + 1) * 128 + x] + gray[(y + 1) * 128 + (x + 1)];
 
           const mag = Math.hypot(gx, gy);
-          if (mag < 42) continue; // Ignora textura fraca
+          if (mag < 48) continue;
 
-          // Ângulo da aresta em graus [0, 180)
-          let angle = (Math.atan2(Math.abs(gy), Math.abs(gx)) * 180) / Math.PI; // [0, 90]
+          strongEdgesCount++;
+          let angle = (Math.atan2(Math.abs(gy), Math.abs(gx)) * 180) / Math.PI;
           const fullAngle = ((Math.atan2(gy, gx) * 180) / Math.PI + 180) % 180;
           const bin = Math.min(8, Math.floor(fullAngle / 20));
           angleBins[bin] += mag;
 
-          if (angle <= 22 || angle >= 72) {
+          if (angle <= 20 || angle >= 74) {
             orthoEnergy += mag;
-          } else if (angle >= 26 && angle <= 68) {
+          } else if (angle >= 28 && angle <= 66) {
             diagEnergy += mag;
           }
+        }
+      }
+
+      // REJEIÇÃO 3: Excesso de bordas internas (objeto complexo da casa: teclado, rosto, roupa estampada, mão, etc.)
+      const edgeDensity = strongEdgesCount / Math.max(1, fgCount);
+      if (edgeDensity > 0.42) {
+        isolationBadge.textContent = "Cena: Objeto Complexo/Texturizado → Outros";
+        isolationBadge.style.color = "var(--outros)";
+        return { isIsolatedPiece: false, reason: "muitas_bordas", piramide: 0.10, cubo: 0.10, outros: 0.80 };
+      }
+
+      // 4. Mede o perfil geométrico da silhueta (Topo vs Meio vs Base)
+      const validRows = [];
+      for (let y = minY; y <= maxY; y++) {
+        const w = rowRight[y] - rowLeft[y];
+        if (w >= 6) validRows.push(w);
+      }
+
+      let taperScore = 0;
+      let blockScore = 0;
+      let roundCurveScore = 0;
+
+      if (validRows.length >= 14) {
+        const n = validRows.length;
+        const maxW = Math.max(...validRows, 1);
+        const w15 = validRows[Math.floor(n * 0.15)] / maxW;
+        const w30 = validRows[Math.floor(n * 0.30)] / maxW;
+        const w50 = validRows[Math.floor(n * 0.50)] / maxW;
+        const w70 = validRows[Math.floor(n * 0.70)] / maxW;
+        const w85 = validRows[Math.floor(n * 0.85)] / maxW;
+
+        const monotonicUp = (w15 < w50 - 0.14) && (w50 < w85 - 0.08) && (w15 < 0.55);
+        const monotonicDown = (w85 < w50 - 0.14) && (w50 < w15 - 0.08) && (w85 < 0.55);
+        const linearMid = (w15 + w85) * 0.5;
+        const bulge = w50 - linearMid;
+
+        if ((monotonicUp || monotonicDown) && bulge < 0.14) {
+          taperScore = 0.85;
+        }
+        if (Math.abs(w15 - w85) < 0.18 && bulge > 0.17 && w15 < 0.75 && w85 < 0.75) {
+          roundCurveScore = 0.85;
+        }
+        if (w15 > 0.66 && w30 > 0.76 && w50 > 0.80 && w70 > 0.76 && w85 > 0.66 && bulge < 0.14) {
+          blockScore = 0.80;
         }
       }
 
@@ -764,40 +807,38 @@
       const diagRatio = diagEnergy / totalEdge;
       const orthoRatio = orthoEnergy / totalEdge;
 
-      // Calcula uniformidade angular (esfera tem energia espalhada igualmente nos 9 bins)
-      const sumBins = angleBins.reduce((a, b) => a + b, 0) + 1e-5;
-      let maxBinShare = 0;
-      for (let i = 0; i < 9; i++) {
-        const share = angleBins[i] / sumBins;
-        if (share > maxBinShare) maxBinShare = share;
+      // Se for redondo (esfera / bolinha), crava Outros
+      if (roundCurveScore > 0.6) {
+        isolationBadge.textContent = "Peça: Formato Esférico/Curvo → Outros";
+        isolationBadge.style.color = "var(--outros)";
+        return { isIsolatedPiece: false, reason: "esfera", piramide: 0.10, cubo: 0.10, outros: 0.80 };
       }
 
-      // Combina os indicadores puramente geométricos (independente de ser azul ou branco!)
-      let sPir = 0.20;
-      let sCub = 0.20;
-      let sOut = 0.15;
+      // Só aceita como peça geométrica candidata se tiver assinatura clara de Pirâmide OU de Cubo
+      const hasClearPyramidShape = (taperScore > 0.5) || (diagRatio > 0.58 && extent < 0.66);
+      const hasClearCubeShape = (blockScore > 0.5 && orthoRatio > 0.52 && extent >= 0.68);
 
-      // 1. Indicadores de Pirâmide (afunilamento triangular OU fortes vincos diagonais + menor preenchimento da caixa)
-      if (taperScore > 0.5) sPir += 0.55;
-      if (diagRatio > 0.52) sPir += (diagRatio - 0.45) * 1.3;
-      if (extent < 0.63 && roundCurveScore < 0.4) sPir += 0.25;
-
-      // 2. Indicadores de Cubo (perfil de bloco + arestas ortogonais/paralelas + alto preenchimento da caixa)
-      if (blockScore > 0.5) sCub += 0.52;
-      if (orthoRatio > 0.50) sCub += (orthoRatio - 0.42) * 1.25;
-      if (extent >= 0.66 && taperScore < 0.3 && roundCurveScore < 0.5) sCub += 0.25;
-
-      // 3. Indicadores de Esfera / Outros (curvatura circular + arestas espalhadas sem direção dominante)
-      if (roundCurveScore > 0.5 && maxBinShare < 0.22) {
-        sOut += 0.70;
+      if (!hasClearPyramidShape && !hasClearCubeShape) {
+        isolationBadge.textContent = "Cena: Sem Geometria de Cubo/Pirâmide → Outros";
+        isolationBadge.style.color = "var(--outros)";
+        return { isIsolatedPiece: false, reason: "sem_geometria_clara", piramide: 0.14, cubo: 0.14, outros: 0.72 };
       }
+
+      isolationBadge.textContent = hasClearPyramidShape
+        ? "Geometria Isolada: Candidato Pirâmide"
+        : "Geometria Isolada: Candidato Cubo";
+      isolationBadge.style.color = "var(--ok)";
+
+      let sPir = hasClearPyramidShape ? 0.68 : 0.16;
+      let sCub = hasClearCubeShape ? 0.68 : 0.16;
+      let sOut = 0.16;
 
       const norm = sPir + sCub + sOut;
       return {
+        isIsolatedPiece: true,
         piramide: sPir / norm,
         cubo: sCub / norm,
-        outros: sOut / norm,
-        empty: false
+        outros: sOut / norm
       };
     }
 
@@ -813,12 +854,10 @@
           r += imgData[i]; g += imgData[i + 1]; b += imgData[i + 2];
         }
         calibratedBgProfile = { r: r / n, g: g / n, b: b / n };
-        addLog("Esteira vazia calibrada! Agora pode passar Cubo ou Pirâmide (Azul ou Branco).", "ok");
+        addLog("Esteira vazia calibrada! Objetos fora desse padrão ou sem geometria limpa serão 'Outros (y=-1)'.", "ok");
       });
     });
 
-    // Captura o quadrado central e converte para ESCALA DE CINZA (P&B) com alto contraste de arestas
-    // antes de enviar para a CNN no Render -> Elimina 100% o vício de cor (Cubo Branco = Cubo Azul, Pirâmide Azul = Pirâmide Branca)!
     function captureSquareGrayscaleBlob() {
       return new Promise((resolve, reject) => {
         if (!mediaStream || video.readyState < 2 || !video.videoWidth) {
@@ -833,15 +872,12 @@
         const sx = Math.round((vw - cropSide) / 2);
         const sy = Math.round((vh - cropSide) / 2);
 
-        // Guarda versão colorida 128x128 apenas para segmentar peça vs esteira vazia
         colorCtx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, 128, 128);
 
-        // Desenha em Escala de Cinza (grayscale 100%) com realce de contraste de arestas para a CNN!
-        ctx.filter = "grayscale(100%) contrast(1.22) brightness(1.06)";
+        ctx.filter = "grayscale(100%) contrast(1.18) brightness(1.04)";
         ctx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, 256, 256);
         ctx.filter = "none";
 
-        // Mostra na miniatura a imagem P&B exata que a CNN está recebendo
         miniCtx.drawImage(canvas, 0, 0, 128, 128);
 
         canvas.toBlob(
@@ -856,13 +892,16 @@
       const pPir = Number(probs.piramide || 0);
       const pCub = Number(probs.cubo || 0);
       const pOut = Number(probs.outros || 0);
-      const minConf = (Number(localThresholdInput.value) || 54) / 100.0;
+      const minConf = (Number(localThresholdInput.value) || 76) / 100.0;
 
       const bestPieceClass = pPir >= pCub ? "piramide" : "cubo";
       const bestPieceY = pPir >= pCub ? 0 : 1;
       const bestPieceProb = Math.max(pPir, pCub);
 
-      if (bestPieceProb >= minConf && bestPieceProb >= pOut * 0.90) {
+      // Só classifica como Pirâmide ou Cubo se:
+      // 1) Atingir o limiar rigoroso (padrão 76%)
+      // 2) For maior que a probabilidade de Outros
+      if (bestPieceProb >= minConf && bestPieceProb > pOut) {
         return {
           classe: bestPieceClass,
           y: bestPieceY,
@@ -872,6 +911,7 @@
         };
       }
 
+      // Caso contrário, é OUTROS / NÃO RECONHECIDO (y = -1)
       return {
         classe: "nao_reconhecido",
         y: -1,
@@ -888,12 +928,12 @@
       const y = Number(decision.y);
       liveBanner.className = `live-banner y-${y}`;
       roiGuide.style.borderColor =
-        y === 0 ? "var(--piramide)" : y === 1 ? "var(--cubo)" : "rgba(59, 130, 246, 0.85)";
+        y === 0 ? "var(--piramide)" : y === 1 ? "var(--cubo)" : "rgba(148, 163, 184, 0.85)";
 
       const labelMap = {
         0: "PIRÂMIDE (y=0)",
         1: "CUBO (y=1)",
-        "-1": "NÃO RECONHECIDO / PASSAR RETO"
+        "-1": "OUTROS / NÃO RECONHECIDO (y=-1)"
       };
       liveClass.textContent = labelMap[String(y)] || decision.classe.toUpperCase();
       liveAction.textContent = `Ação: ${decision.acao}`;
@@ -913,13 +953,19 @@
       valOut.textContent = `${pOut.toFixed(1)}%`;
     }
 
-    // Envia frame P&B (Invariante a Cor) para a CNN do Render e combina com Geometria Pura de Arestas Sobel
     async function callSingleSquarePredict() {
       const blob = await captureSquareGrayscaleBlob();
-      const geo = analyzePureGeometry128();
+      const geo = analyzeIsolatedShape128();
 
-      if (geo.empty) {
-        return { piramide: 0.06, cubo: 0.06, outros: 0.88 };
+      // Se o filtro de isolamento detectou que NÃO há uma peça isolada na esteira
+      // (ex.: apontando para objetos aleatórios da casa, mão, parede, ou esteira vazia),
+      // retorna imediatamente OUTROS (y = -1) sem deixar a CNN chutar Cubo!
+      if (!geo.isIsolatedPiece) {
+        return {
+          piramide: geo.piramide,
+          cubo: geo.cubo,
+          outros: geo.outros
+        };
       }
 
       const formData = new FormData();
@@ -933,22 +979,22 @@
         cnnProbs = raw.probabilidades;
       } else {
         const c = Number(raw.confianca || 0.5);
-        if (raw.y === 0) cnnProbs = { piramide: c, cubo: (1 - c) * 0.45, outros: (1 - c) * 0.55 };
-        else if (raw.y === 1) cnnProbs = { piramide: (1 - c) * 0.45, cubo: c, outros: (1 - c) * 0.55 };
-        else {
-          cnnProbs = {
-            piramide: geo.piramide * c,
-            cubo: geo.cubo * c,
-            outros: Math.max(0.22, 1.0 - c)
-          };
+        if (raw.y === 0) {
+          cnnProbs = { piramide: c, cubo: (1 - c) * 0.3, outros: (1 - c) * 0.7 };
+        } else if (raw.y === 1) {
+          cnnProbs = { piramide: (1 - c) * 0.3, cubo: c, outros: (1 - c) * 0.7 };
+        } else {
+          // Quando a CNN do Render diz y = -1 (nao_reconhecido), respeitamos que ela teve dúvida!
+          cnnProbs = { piramide: (1 - c) * 0.35, cubo: (1 - c) * 0.35, outros: Math.max(0.65, c) };
         }
       }
 
-      // Fusão 50% CNN (sobre imagem P&B invariante a cor) + 50% Geometria de Arestas Sobel
+      // Só confirma Pirâmide ou Cubo se TANTO a CNN quanto a Geometria Isolada concordarem,
+      // caso contrário a massa de probabilidade vai para Outros!
       const fused = {
-        piramide: cnnProbs.piramide * 0.50 + geo.piramide * 0.50,
-        cubo: cnnProbs.cubo * 0.50 + geo.cubo * 0.50,
-        outros: cnnProbs.outros * 0.50 + geo.outros * 0.50
+        piramide: cnnProbs.piramide * 0.65 + geo.piramide * 0.35,
+        cubo: cnnProbs.cubo * 0.65 + geo.cubo * 0.35,
+        outros: cnnProbs.outros * 0.65 + geo.outros * 0.35
       };
       const sum = fused.piramide + fused.cubo + fused.outros || 1;
       return {
@@ -958,7 +1004,7 @@
       };
     }
 
-    async function predictLiveFrame(sourceLabel = "LEITURA AO VIVO (GEOMETRIA P&B)") {
+    async function predictLiveFrame(sourceLabel = "LEITURA AO VIVO") {
       if (isPredicting) return null;
       isPredicting = true;
       const t0 = performance.now();
@@ -1151,7 +1197,7 @@
       if (isProcessingEspTrigger) return;
       isProcessingEspTrigger = true;
       try {
-        addLog("ESP32 pausou a esteira! Classificando geometria P&B (invariante a cor)...", "warn");
+        addLog("ESP32 pausou a esteira! Classificando peça isolada...", "warn");
         if (mediaStream) {
           const decision = await predictMultiFrameConsensus(3);
           if (decision) {
@@ -1201,8 +1247,8 @@
         await video.play();
         await listCameras();
         probHistory = [];
-        overlayMode.textContent = "Geometria P&B (Qualquer Cor)";
-        addLog("Câmera iniciada! Conversão P&B ativa: Cubo e Pirâmide funcionam em qualquer cor (azul ou branco).", "ok");
+        overlayMode.textContent = "Filtro Rigoroso Ativo";
+        addLog("Câmera iniciada! Objetos aleatórios da casa ou fora da mira são rejeitados como 'Outros (y=-1)'.", "ok");
       } catch (err) {
         addLog(`Erro ao abrir câmera: ${err.message}`, "err");
       }
@@ -1214,7 +1260,7 @@
 
     setInterval(async () => {
       if (!liveReadingEnabled || !mediaStream || isProcessingEspTrigger || isPredicting) return;
-      await predictLiveFrame("LEITURA AO VIVO (QUALQUER COR)");
+      await predictLiveFrame("LEITURA AO VIVO");
     }, LIVE_INTERVAL_MS);
 
     setInterval(() => {
