@@ -1,14 +1,16 @@
 /*
  * Esteira Seletora - ESP32 (PlatformIO / src/main.cpp)
- * Integrada com Camo + Ponte (Python / Web) + API FastAPI no Render
+ * Integrada com Camo + Ponte (Python / Web no PC e Celular) + API FastAPI no Render
  *
- * Padrão adotado:
+ * Padrão adotado (100% preservado):
  * 1. PINO_SERVO_CUBO no GPIO 14 (evita pino de strapping GPIO 12 no boot)
  * 2. Ultrassônico com timeout curto (5000 us) e leitura periódica (100 ms)
  *    para manter o WebServer responsivo
  * 3. Esteira pausa ao detectar peça, aguarda decisão e retoma (com timeout
  *    de segurança de 12s para nunca travar)
  * 4. Execução da decisão fora do handler HTTP + cabeçalhos CORS
+ * 5. Aviso mútuo de conexão (Monitor Serial <-> HTML) + Página HTML embutida
+ *    em GET / para abrir direto pelo IP da ESP32 no Celular ou em qualquer PC!
  */
 
 #include <Arduino.h>
@@ -62,6 +64,223 @@ unsigned long ultimaLeituraPrint = 0;
 
 bool temDecisaoPendente = false;
 int  decisaoPendenteY   = -1;
+
+// ===================== HTML EMBUTIDO (ACESSO DIRETO PELO CELULAR OU PC) =====================
+const char PAGINA_PONTE_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Esteira Seletora IA — Ponte PC & Celular</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#131b31; --panel2:#1a2442; --border:#2a3760; --text:#eef2ff; --muted:#9aa7c7; --pir:#f59e0b; --cub:#10b981; --out:#94a3b8; --ok:#22c55e; --err:#ef4444; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:12px; }
+    .wrap { max-width:960px; margin:0 auto; display:grid; grid-template-columns:1.15fr 0.85fr; gap:12px; }
+    @media(max-width:820px){ .wrap { grid-template-columns:1fr; } }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+    h1 { font-size:1.1rem; }
+    .banner-conn { padding:10px 12px; border-radius:8px; font-weight:700; font-size:0.86rem; border:2px solid var(--border); background:var(--panel2); display:flex; justify-content:space-between; }
+    .banner-conn.ok { border-color:var(--ok); color:#4ade80; background:rgba(34,197,94,0.14); }
+    .banner-conn.err { border-color:var(--err); color:#f87171; background:rgba(239,68,68,0.14); }
+    .vbox { position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; border:2px solid var(--border); }
+    video { width:100%; height:100%; object-fit:contain; }
+    .hud { background:var(--panel2); border:2px solid var(--border); border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; }
+    .hud.y-0 { border-color:var(--pir); } .hud.y-1 { border-color:var(--cub); }
+    .hud-cls { font-size:1.3rem; font-weight:800; }
+    .y-0 .hud-cls { color:var(--pir); } .y-1 .hud-cls { color:var(--cub); }
+    label { font-size:0.8rem; color:var(--muted); display:flex; flex-direction:column; gap:4px; font-weight:600; }
+    input, select { background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:9px 10px; font-size:0.92rem; }
+    button { cursor:pointer; background:#16a34a; color:#fff; border:none; border-radius:8px; padding:11px; font-size:0.92rem; font-weight:700; }
+    button.sec { background:#2563eb; }
+    .log { background:#060913; border:1px solid var(--border); border-radius:8px; padding:8px; height:170px; overflow-y:auto; font-family:monospace; font-size:0.76rem; display:flex; flex-direction:column; gap:4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Esteira Seletora IA — Vídeo & Leitura Ao Vivo</h1>
+      <div class="vbox">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+      </div>
+      <div id="hud" class="hud y--1">
+        <div>
+          <div id="hudSrc" style="font-size:0.73rem;color:var(--muted);">LEITURA AO VIVO</div>
+          <div id="hudCls" class="hud-cls">AGUARDANDO...</div>
+          <div id="hudAct" style="font-size:0.8rem;color:var(--muted);">Ação: --</div>
+        </div>
+        <div style="text-align:right;">
+          <div id="hudConf" style="font-size:1.3rem;font-weight:800;">--%</div>
+          <div id="hudY" style="font-size:0.76rem;color:var(--muted);">y = --</div>
+        </div>
+      </div>
+      <label>Escolher Câmera (Camo / Celular / Webcam)
+        <select id="camSel"></select>
+      </label>
+      <button id="btnStart">▶ Iniciar Câmera + Leitura Ao Vivo + Esteira</button>
+    </div>
+
+    <div class="card">
+      <h1>Conexão com a ESP32</h1>
+      <label>IP da ESP32
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="espIp" style="flex:1;" placeholder="Ex.: 192.168.1.100" />
+          <button id="btnConn" class="sec" style="padding:9px 12px;">Conectar</button>
+        </div>
+      </label>
+      <div id="connBanner" class="banner-conn">
+        <span id="connTxt">⏳ Conectando à ESP32...</span>
+        <span id="distTxt">-- cm</span>
+      </div>
+      <div id="log" class="log"></div>
+    </div>
+  </div>
+  <script>
+    const API_URL = "https://projeto-harduino-ia.onrender.com";
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const camSel = document.getElementById("camSel");
+    const espInput = document.getElementById("espIp");
+    const logEl = document.getElementById("log");
+
+    // Preenche automaticamente o IP se aberto direto pela ESP32
+    if (location.hostname && location.hostname !== "localhost" && !location.protocol.startsWith("file")) {
+      espInput.value = location.hostname;
+    } else {
+      espInput.value = localStorage.getItem("harduino_esp_ip") || "192.168.43.100";
+    }
+    espInput.oninput = () => localStorage.setItem("harduino_esp_ip", espInput.value.trim());
+
+    let stream = null, active = false, busyPred = false, busyTrig = false, busyPoll = false, isConn = false, lastDec = 0;
+
+    function espUrl() {
+      let u = espInput.value.trim().replace(/\/+$/, "");
+      return /^https?:\/\//i.test(u) ? u : "http://" + u;
+    }
+    function log(m, c="#93c5fd") {
+      const d = document.createElement("div");
+      d.style.color = c;
+      d.textContent = `[${new Date().toLocaleTimeString("pt-BR",{hour12:false})}] ${m}`;
+      logEl.prepend(d);
+    }
+    async function checkEsp(manual=false) {
+      try {
+        const r = await fetch(`${espUrl()}/status${manual ? "?connect=1" : ""}`);
+        if (r.ok) {
+          const st = await r.json();
+          const b = document.getElementById("connBanner");
+          b.className = "banner-conn ok";
+          document.getElementById("connTxt").textContent = `✔ ESP32 CONECTADA (${espInput.value.trim()})`;
+          document.getElementById("distTxt").textContent = st.distancia_cm > 0 ? `${Number(st.distancia_cm).toFixed(1)} cm` : "Livre";
+          if (!isConn || manual) { isConn = true; log(`Conectado à ESP32 em ${espUrl()}!`, "#4ade80"); }
+          return st;
+        }
+      } catch (e) {
+        const b = document.getElementById("connBanner");
+        b.className = "banner-conn err";
+        document.getElementById("connTxt").textContent = `✖ Sem resposta (${espInput.value.trim()})`;
+        isConn = false;
+      }
+      return null;
+    }
+    async function loadCams() {
+      try {
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        const vids = devs.filter(d => d.kind === "videoinput");
+        camSel.innerHTML = "";
+        vids.forEach((d,i) => {
+          const o = document.createElement("option");
+          o.value = d.deviceId; o.textContent = d.label || `Câmera ${i+1}`;
+          camSel.appendChild(o);
+        });
+        const camo = vids.find(d => /camo/i.test(d.label));
+        if (camo) camSel.value = camo.deviceId;
+      } catch(e){}
+    }
+    async function startCam() {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      const id = camSel.value;
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio:false,
+        video: id ? { deviceId:{exact:id} } : { facingMode:"environment" }
+      });
+      video.srcObject = stream;
+      await video.play();
+      await loadCams();
+      log("Câmera ao vivo iniciada!", "#4ade80");
+    }
+    function grabBlob() {
+      return new Promise((res,rej) => {
+        if (!stream || video.readyState < 2) return rej(new Error("Sem câmera"));
+        ctx.drawImage(video, 0, 0, 320, 240);
+        canvas.toBlob(b => b ? res(b) : rej(new Error("Erro JPEG")), "image/jpeg", 0.85);
+      });
+    }
+    async function predict(src="LEITURA AO VIVO", wait=false) {
+      if (busyPred) {
+        if (!wait) return null;
+        const t0 = Date.now();
+        while (busyPred && Date.now() - t0 < 4000) await new Promise(r => setTimeout(r, 50));
+      }
+      busyPred = true;
+      try {
+        const blob = await grabBlob();
+        const fd = new FormData();
+        fd.append("file", blob, "frame.jpg");
+        const r = await fetch(`${API_URL}/predict`, { method:"POST", body:fd });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        document.getElementById("hud").className = `hud y-${d.y}`;
+        document.getElementById("hudSrc").textContent = src;
+        document.getElementById("hudCls").textContent = (d.classe || "").toUpperCase();
+        document.getElementById("hudAct").textContent = `Ação: ${d.acao}`;
+        document.getElementById("hudConf").textContent = `${((d.confianca||0)*100).toFixed(1)}%`;
+        document.getElementById("hudY").textContent = `y = ${d.y}`;
+        return d;
+      } catch(e) { return null; } finally { busyPred = false; }
+    }
+    setInterval(async () => {
+      if (active && stream && !busyTrig && !busyPred) await predict("LEITURA AO VIVO (CONTÍNUA)", false);
+    }, 700);
+    setInterval(async () => {
+      if (busyPoll || busyTrig || (Date.now() - lastDec < 1800)) return;
+      busyPoll = true;
+      try {
+        const st = await checkEsp(false);
+        if (st && st.peca_detectada === true && active) {
+          busyTrig = true;
+          log("Peça detectada na esteira! Classificando...", "#fbbf24");
+          const pred = await predict("PEÇA NA ESTEIRA -> ESP32", true);
+          if (pred) {
+            await fetch(`${espUrl()}/decisao`, {
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({classe:pred.classe, y:Number(pred.y), acao:pred.acao, confianca:Number(pred.confianca??1)})
+            });
+            lastDec = Date.now();
+            log(`Decisão enviada à ESP32: ${pred.classe.toUpperCase()} (y=${pred.y})`, "#4ade80");
+          }
+        }
+      } finally { busyPoll = false; busyTrig = false; }
+    }, 450);
+
+    document.getElementById("btnConn").onclick = () => checkEsp(true);
+    document.getElementById("btnStart").onclick = async (e) => {
+      await startCam();
+      active = true;
+      checkEsp(true);
+      e.target.textContent = "✔ Sistema Ativo (Ao Vivo + Esteira)";
+    };
+    camSel.onchange = () => { if (stream) startCam(); };
+    loadCams();
+    checkEsp(true);
+  </script>
+</body>
+</html>
+)rawliteral";
 
 // ===================== ESTEIRA E SERVOS =====================
 void moverEsteira(bool ligada) {
@@ -213,10 +432,18 @@ void handleOptions() {
   server.send(204);
 }
 
+void handleRoot() {
+  enviarCORS();
+  IPAddress ipCliente = server.client().remoteIP();
+  Serial.printf("[PONTE] Painel HTML aberto diretamente pelo navegador (IP: %s)\n",
+                ipCliente.toString().c_str());
+  server.send_P(200, "text/html; charset=utf-8", PAGINA_PONTE_HTML);
+}
+
 void handleStatus() {
   enviarCORS();
 
-  // Avisa no Monitor Serial quando a ponte (HTML / Python) conecta ou reconecta
+  // Avisa no Monitor Serial quando a ponte (no PC ou no Celular) conecta
   unsigned long agora = millis();
   if (!ponteConectada || server.hasArg("connect") || (agora - ultimoPingPonte > 5000)) {
     ponteConectada = true;
@@ -288,6 +515,8 @@ void setup() {
 
   acordarAPI();
 
+  server.on("/",        HTTP_GET,     handleRoot);
+  server.on("/ponte",   HTTP_GET,     handleRoot);
   server.on("/status",  HTTP_OPTIONS, handleOptions);
   server.on("/decisao", HTTP_OPTIONS, handleOptions);
   server.on("/status",  HTTP_GET,     handleStatus);
@@ -295,7 +524,8 @@ void setup() {
   server.on("/decisao", HTTP_GET,     handleDecisao);
   server.begin();
 
-  Serial.println("[OK] WebServer iniciado! Endpoints: /status e /decisao");
+  Serial.printf("[OK] WebServer iniciado! Acesse http://%s no celular ou PC!\n",
+                WiFi.localIP().toString().c_str());
 }
 
 void loop() {
@@ -316,7 +546,6 @@ void loop() {
 
   unsigned long agora = millis();
 
-  // Avisa no Monitor Serial se a ponte HTML ficar mais de 6 segundos sem responder
   if (ponteConectada && (agora - ultimoPingPonte > 6000)) {
     ponteConectada = false;
     Serial.println("[PONTE] Aviso: Ponte HTML desconectada (sem comunicacao ha 6s).");
