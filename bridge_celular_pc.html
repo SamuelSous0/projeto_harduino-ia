@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Esteira Seletora IA — Visualização Ao Vivo & ESP32</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131b31;
+      --panel-2: #1a2442;
+      --border: #2a3760;
+      --text: #eef2ff;
+      --muted: #9aa7c7;
+      --accent: #3b82f6;
+      --piramide: #f59e0b;
+      --cubo: #10b981;
+      --outros: #94a3b8;
+      --danger: #ef4444;
+      --ok: #22c55e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      line-height: 1.45;
+    }
+    .container {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+    header {
+      max-width: 1160px;
+      margin: 0 auto 16px auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 700; }
+    header .sub { font-size: 0.85rem; color: var(--muted); }
+    .status-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--outros);
+    }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.warn { background: var(--piramide); box-shadow: 0 0 8px var(--piramide); }
+    .dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      background: #050811;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      aspect-ratio: 4 / 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    .video-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge-overlay {
+      background: rgba(11, 16, 32, 0.85);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+    }
+    .live-banner {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      right: 10px;
+      background: rgba(11, 16, 32, 0.92);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(6px);
+    }
+    .live-banner.y-0 { border-color: var(--piramide); }
+    .live-banner.y-1 { border-color: var(--cubo); }
+    .live-banner.y--1 { border-color: var(--outros); }
+
+    .live-class {
+      font-size: 1.35rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .y-0 .live-class { color: var(--piramide); }
+    .y-1 .live-class { color: var(--cubo); }
+    .y--1 .live-class { color: var(--outros); }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 0.84rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    input, select {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      transition: 0.15s ease;
+    }
+    button:hover { filter: brightness(1.12); }
+    button.primary { background: var(--accent); border-color: #2563eb; color: #fff; }
+    button.success { background: #16a34a; border-color: #15803d; color: #fff; }
+    button.danger { background: #dc2626; border-color: #b91c1c; color: #fff; }
+
+    .probs {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--panel-2);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .prob-row {
+      display: grid;
+      grid-template-columns: 115px 1fr 52px;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+    }
+    .bar-bg {
+      height: 10px;
+      background: #0b1020;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar-fill { height: 100%; width: 0%; transition: width 0.2s ease; }
+    .bar-pir { background: var(--piramide); }
+    .bar-cub { background: var(--cubo); }
+    .bar-out { background: var(--outros); }
+
+    .esp-box {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      font-size: 0.86rem;
+    }
+    .esp-box div strong {
+      color: var(--muted);
+      display: block;
+      font-size: 0.75rem;
+    }
+    .log-box {
+      background: #070b16;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .log-line { word-break: break-word; }
+    .log-line.ok { color: #4ade80; }
+    .log-line.warn { color: #fbbf24; }
+    .log-line.err { color: #f87171; }
+    .log-line.info { color: #93c5fd; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>Esteira Seletora IA — Visualização & Leitura Ao Vivo</h1>
+      <div class="sub">Basta informar o IP da ESP32 e iniciar a câmera</div>
+    </div>
+    <div class="status-pills">
+      <span class="pill"><span id="dotApi" class="dot"></span> IA Render: <span id="txtApi">Verificando...</span></span>
+      <span class="pill"><span id="dotCam" class="dot"></span> Câmera: <span id="txtCam">Parada</span></span>
+      <span class="pill"><span id="dotEsp" class="dot"></span> ESP32: <span id="txtEsp">Aguardando IP</span></span>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ESQUERDA: VÍDEO AO VIVO E CLASSIFICAÇÃO EM TEMPO REAL -->
+    <section class="card">
+      <h2>
+        <span>Vídeo Ao Vivo (Camo / Celular / Webcam)</span>
+        <span style="font-size:0.78rem;color:var(--muted);">320×240 JPEG</span>
+      </h2>
+
+      <div class="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+
+        <div class="video-overlay">
+          <div class="badge-overlay" id="overlayMode">Aguardando câmera...</div>
+          <div class="badge-overlay" id="overlayLatency">IA: -- ms</div>
+        </div>
+
+        <div id="liveBanner" class="live-banner y--1">
+          <div>
+            <div style="font-size:0.74rem;color:var(--muted);" id="bannerSource">LEITURA AO VIVO</div>
+            <div class="live-class" id="liveClass">AGUARDANDO...</div>
+            <div style="font-size:0.8rem;color:var(--muted);" id="liveAction">Ação: --</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:0.74rem;color:var(--muted);">CONFIANÇA</div>
+            <div style="font-size:1.35rem;font-weight:800;" id="liveConf">--%</div>
+            <div style="font-size:0.75rem;color:var(--muted);" id="liveY">y = --</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barras de probabilidade em tempo real -->
+      <div class="probs">
+        <div class="prob-row">
+          <span>Pirâmide (y=0)</span>
+          <div class="bar-bg"><div id="barPir" class="bar-fill bar-pir"></div></div>
+          <span id="valPir" style="text-align:right;">0%</span>
+        </div>
+        <div class="prob-row">
+          <span>Cubo (y=1)</span>
+          <div class="bar-bg"><div id="barCub" class="bar-fill bar-cub"></div></div>
+          <span id="valCub" style="text-align:right;">0%</span>
+        </div>
+        <div class="prob-row">
+          <span>Outros (y=-1)</span>
+          <div class="bar-bg"><div id="barOut" class="bar-fill bar-out"></div></div>
+          <span id="valOut" style="text-align:right;">0%</span>
+        </div>
+      </div>
+
+      <label>
+        Escolher Câmera (Camo / Celular / Webcam)
+        <select id="cameraSelect"></select>
+      </label>
+
+      <div class="btn-row">
+        <button id="btnStartAll" class="success" style="flex:1;font-size:0.95rem;padding:12px;">
+          ▶ Iniciar Câmera + Leitura Ao Vivo + Esteira
+        </button>
+        <button id="btnToggleLive" class="primary">Leitura Ao Vivo: ON</button>
+      </div>
+    </section>
+
+    <!-- DIREITA: APENAS O IP DA ESP32 E STATUS DA ESTEIRA -->
+    <section class="card">
+      <h2>
+        <span>Conexão com a ESP32</span>
+      </h2>
+
+      <label>
+        IP da ESP32 (Hotspot do Celular)
+        <input type="text" id="espIp" value="192.168.43.100" placeholder="Ex.: 192.168.43.100" />
+      </label>
+
+      <div class="esp-box">
+        <div>
+          <strong>Status da Esteira</strong>
+          <span id="espPecaStatus">Aguardando início</span>
+        </div>
+        <div>
+          <strong>Sensor Ultrassônico</strong>
+          <span id="espDistancia">-- cm</span>
+        </div>
+        <div>
+          <strong>Última Decisão Enviada</strong>
+          <span id="espLastDecisao">Nenhuma</span>
+        </div>
+        <div>
+          <strong>Peças Classificadas</strong>
+          <span id="espCount">0 peças</span>
+        </div>
+      </div>
+
+      <h2 style="margin-top:4px;">
+        <span>Log em Tempo Real</span>
+        <button id="btnClearLog" style="padding:3px 8px;font-size:0.74rem;">Limpar</button>
+      </h2>
+      <div id="logBox" class="log-box"></div>
+    </section>
+  </main>
+
+  <script>
+    // URL fixa da API no Render (automática)
+    const API_URL = "https://projeto-harduino-ia.onrender.com";
+    const LIVE_INTERVAL_MS = 700;
+    const ESP_POLL_MS = 400;
+    const ESP_COOLDOWN_MS = 1800;
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const cameraSelect = document.getElementById("cameraSelect");
+    const espIpInput = document.getElementById("espIp");
+
+    const dotApi = document.getElementById("dotApi");
+    const txtApi = document.getElementById("txtApi");
+    const dotCam = document.getElementById("dotCam");
+    const txtCam = document.getElementById("txtCam");
+    const dotEsp = document.getElementById("dotEsp");
+    const txtEsp = document.getElementById("txtEsp");
+
+    const overlayMode = document.getElementById("overlayMode");
+    const overlayLatency = document.getElementById("overlayLatency");
+    const liveBanner = document.getElementById("liveBanner");
+    const bannerSource = document.getElementById("bannerSource");
+    const liveClass = document.getElementById("liveClass");
+    const liveAction = document.getElementById("liveAction");
+    const liveConf = document.getElementById("liveConf");
+    const liveY = document.getElementById("liveY");
+
+    const barPir = document.getElementById("barPir");
+    const valPir = document.getElementById("valPir");
+    const barCub = document.getElementById("barCub");
+    const valCub = document.getElementById("valCub");
+    const barOut = document.getElementById("barOut");
+    const valOut = document.getElementById("valOut");
+
+    const espPecaStatus = document.getElementById("espPecaStatus");
+    const espDistancia = document.getElementById("espDistancia");
+    const espLastDecisao = document.getElementById("espLastDecisao");
+    const espCount = document.getElementById("espCount");
+    const logBox = document.getElementById("logBox");
+
+    let mediaStream = null;
+    let systemRunning = false;
+    let liveReadingEnabled = true;
+    let isPredicting = false;
+    let isProcessingEspTrigger = false;
+    let isPollingEsp = false;
+    let lastDecisionTimestamp = 0;
+    let totalPiecesProcessed = 0;
+
+    // Recupera último IP digitado
+    const savedEsp = localStorage.getItem("harduino_esp_ip");
+    if (savedEsp) espIpInput.value = savedEsp.replace(/^https?:\/\//i, "");
+    espIpInput.addEventListener("input", () => {
+      localStorage.setItem("harduino_esp_ip", espIpInput.value.trim());
+    });
+
+    function getBaseEspUrl() {
+      let url = espIpInput.value.trim().replace(/\/+$/, "");
+      if (url && !/^https?:\/\//i.test(url)) url = "http://" + url;
+      return url;
+    }
+
+    function addLog(msg, type = "info") {
+      const line = document.createElement("div");
+      line.className = `log-line ${type}`;
+      const now = new Date().toLocaleTimeString("pt-BR", { hour12: false });
+      line.textContent = `[${now}] ${msg}`;
+      logBox.prepend(line);
+      while (logBox.children.length > 100) logBox.removeChild(logBox.lastChild);
+    }
+
+    document.getElementById("btnClearLog").addEventListener("click", () => {
+      logBox.innerHTML = "";
+    });
+
+    async function checkApiHealth() {
+      try {
+        const res = await fetch(`${API_URL}/health`);
+        const data = await res.json();
+        if (res.ok && data.modelo_carregado) {
+          dotApi.className = "dot ok";
+          txtApi.textContent = "Online";
+          addLog(`IA conectada no Render (modelo carregado).`, "ok");
+        } else {
+          dotApi.className = "dot warn";
+          txtApi.textContent = "Sem Modelo";
+        }
+      } catch (err) {
+        dotApi.className = "dot err";
+        txtApi.textContent = "Acordando...";
+      }
+    }
+
+    async function listCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === "videoinput");
+        const currentVal = cameraSelect.value;
+        cameraSelect.innerHTML = "";
+        videoDevices.forEach((dev, idx) => {
+          const opt = document.createElement("option");
+          opt.value = dev.deviceId;
+          opt.textContent = dev.label || `Câmera ${idx + 1}`;
+          cameraSelect.appendChild(opt);
+        });
+        if (!currentVal) {
+          const camo = videoDevices.find(d => /camo/i.test(d.label));
+          if (camo) cameraSelect.value = camo.deviceId;
+        } else {
+          cameraSelect.value = currentVal;
+        }
+      } catch (e) {}
+    }
+
+    async function startCamera() {
+      try {
+        if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+        const selectedId = cameraSelect.value;
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: selectedId
+            ? { deviceId: { exact: selectedId }, width: { ideal: 640 }, height: { ideal: 480 } }
+            : { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        video.srcObject = mediaStream;
+        await video.play();
+        await listCameras();
+        dotCam.className = "dot ok";
+        txtCam.textContent = "Ao Vivo";
+        overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa" : "Vídeo Ao Vivo";
+        addLog("Câmera iniciada! Vídeo e leitura ao vivo rodando.", "ok");
+      } catch (err) {
+        dotCam.className = "dot err";
+        txtCam.textContent = "Erro";
+        addLog(`Erro ao abrir câmera: ${err.message}`, "err");
+      }
+    }
+
+    cameraSelect.addEventListener("change", () => {
+      if (mediaStream) startCamera();
+    });
+
+    function captureFrameBlob() {
+      return new Promise((resolve, reject) => {
+        if (!mediaStream || video.readyState < 2) return reject(new Error("Câmera não iniciada"));
+        ctx.drawImage(video, 0, 0, 320, 240);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error("Erro JPEG")), "image/jpeg", 0.85);
+      });
+    }
+
+    function updatePredictionUI(data, latencyMs, sourceLabel) {
+      bannerSource.textContent = sourceLabel;
+      overlayLatency.textContent = `IA: ${latencyMs} ms`;
+
+      const y = Number(data.y);
+      liveBanner.className = `live-banner y-${y}`;
+
+      const labelMap = {
+        0: "PIRÂMIDE",
+        1: "CUBO",
+        "-1": "NÃO RECONHECIDO / PASSAR RETO"
+      };
+      liveClass.textContent = labelMap[String(y)] || (data.classe || "DESCONHECIDO").toUpperCase();
+      liveAction.textContent = `Ação: ${data.acao || "--"}`;
+      const confPct = Math.round((Number(data.confianca) || 0) * 1000) / 10;
+      liveConf.textContent = `${confPct.toFixed(1)}%`;
+      liveY.textContent = `y = ${y}`;
+
+      let pPir = 0, pCub = 0, pOut = 0;
+      if (data.probabilidades) {
+        pPir = (data.probabilidades.piramide || 0) * 100;
+        pCub = (data.probabilidades.cubo || 0) * 100;
+        pOut = (data.probabilidades.outros || 0) * 100;
+      } else {
+        if (y === 0) pPir = confPct;
+        else if (y === 1) pCub = confPct;
+        else pOut = confPct;
+      }
+      barPir.style.width = `${Math.min(100, pPir).toFixed(1)}%`;
+      valPir.textContent = `${pPir.toFixed(1)}%`;
+      barCub.style.width = `${Math.min(100, pCub).toFixed(1)}%`;
+      valCub.textContent = `${pCub.toFixed(1)}%`;
+      barOut.style.width = `${Math.min(100, pOut).toFixed(1)}%`;
+      valOut.textContent = `${pOut.toFixed(1)}%`;
+    }
+
+    async function predictCurrentFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
+      if (isPredicting) {
+        if (!forceWait) return null;
+        const t0 = Date.now();
+        while (isPredicting && Date.now() - t0 < 4000) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }
+      isPredicting = true;
+      const t0 = performance.now();
+      try {
+        const blob = await captureFrameBlob();
+        const formData = new FormData();
+        formData.append("file", blob, "frame.jpg");
+        const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        updatePredictionUI(data, Math.round(performance.now() - t0), sourceLabel);
+        dotApi.className = "dot ok";
+        txtApi.textContent = "Online";
+        return data;
+      } catch (err) {
+        return null;
+      } finally {
+        isPredicting = false;
+      }
+    }
+
+    // Loop automático de leitura ao vivo (não trava nem envia decisão sem peça)
+    setInterval(async () => {
+      if (!systemRunning || !liveReadingEnabled || !mediaStream) return;
+      if (!isProcessingEspTrigger && !isPredicting) {
+        await predictCurrentFrame("LEITURA AO VIVO (CONTÍNUA)", false);
+      }
+    }, LIVE_INTERVAL_MS);
+
+    // Loop automático da esteira ESP32 (para quando detecta peça e só libera após a IA responder)
+    setInterval(async () => {
+      if (!systemRunning || isPollingEsp || isProcessingEspTrigger) return;
+      if (Date.now() - lastDecisionTimestamp < ESP_COOLDOWN_MS) return;
+
+      const espUrl = getBaseEspUrl();
+      if (!espUrl) return;
+
+      isPollingEsp = true;
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 2200);
+        const res = await fetch(`${espUrl}/status`, { method: "GET", signal: ctrl.signal });
+        clearTimeout(timer);
+
+        if (res.ok) {
+          const st = await res.json();
+          dotEsp.className = "dot ok";
+          txtEsp.textContent = "Conectada";
+
+          if (st.distancia_cm !== undefined || st.distancia !== undefined) {
+            espDistancia.textContent = `${Number(st.distancia_cm ?? st.distancia).toFixed(1)} cm`;
+          } else {
+            espDistancia.textContent = "Ativo (<= 15cm)";
+          }
+
+          if (st.peca_detectada === true) {
+            isProcessingEspTrigger = true;
+            espPecaStatus.textContent = "PAUSADA — Classificando peça...";
+            espPecaStatus.style.color = "var(--piramide)";
+            addLog("Peça detectada na esteira! Classificando e enviando decisão...", "warn");
+
+            const pred = await predictCurrentFrame("PEÇA NA ESTEIRA → ESP32", true);
+            if (pred) {
+              const payload = {
+                classe: pred.classe,
+                y: Number(pred.y),
+                acao: pred.acao,
+                confianca: Number(pred.confianca ?? 1.0)
+              };
+              const decRes = await fetch(`${espUrl}/decisao`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+              });
+              if (decRes.ok) {
+                lastDecisionTimestamp = Date.now();
+                totalPiecesProcessed++;
+                espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
+                espCount.textContent = `${totalPiecesProcessed} peça(s)`;
+                espPecaStatus.textContent = "Decisão enviada (Esteira liberada)";
+                espPecaStatus.style.color = "var(--ok)";
+                addLog(`Decisão enviada para ESP32: ${payload.classe.toUpperCase()} (y=${payload.y})`, "ok");
+              }
+            }
+          } else {
+            espPecaStatus.textContent = "Rodando (Aguardando peça)";
+            espPecaStatus.style.color = "var(--text)";
+          }
+        }
+      } catch (e) {
+        dotEsp.className = "dot warn";
+        txtEsp.textContent = "Verifique IP";
+      } finally {
+        isPollingEsp = false;
+        isProcessingEspTrigger = false;
+      }
+    }, ESP_POLL_MS);
+
+    document.getElementById("btnStartAll").addEventListener("click", async (e) => {
+      await startCamera();
+      systemRunning = true;
+      e.target.textContent = "✔ Sistema Ativo (Câmera + Ao Vivo + Esteira ESP32)";
+    });
+
+    document.getElementById("btnToggleLive").addEventListener("click", (e) => {
+      liveReadingEnabled = !liveReadingEnabled;
+      e.target.textContent = liveReadingEnabled ? "Leitura Ao Vivo: ON" : "Leitura Ao Vivo: OFF";
+      e.target.className = liveReadingEnabled ? "primary" : "";
+      overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa" : "Somente Gatilho da Esteira";
+    });
+
+    listCameras();
+    checkApiHealth();
+  </script>
+</body>
+</html>
