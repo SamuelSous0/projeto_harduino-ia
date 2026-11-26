@@ -10,6 +10,7 @@ from pathlib import Path
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
 
 from src.model import EsteiraCNN
@@ -26,6 +27,8 @@ from src.preprocess import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = Path(os.getenv("MODEL_PATH", PROJECT_ROOT / "model" / "cnn_esteira.pt"))
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.75"))
+BRIDGE_HTML_PATH = PROJECT_ROOT / "bridge_celular_pc.html"
+BRIDGE_2_HTML_PATH = PROJECT_ROOT / "bridge_celular_pc_2.html"
 
 
 @asynccontextmanager
@@ -64,7 +67,7 @@ app = FastAPI(
         "Classificação de peças (pirâmide, cubo e não reconhecido/outros) com "
         "CNN construída do zero em PyTorch para controle de esteira com ESP32."
     ),
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
@@ -72,9 +75,46 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+def root():
+    """Resumo rápido da API e atalhos para a interface ao vivo."""
+    return {
+        "servico": "API Esteira Seletora - CNN PyTorch + ESP32",
+        "status": "online",
+        "modelo_carregado": app.state.model is not None,
+        "endpoints": {
+            "health": "/health",
+            "predict": "/predict",
+            "bridge_ui": "/bridge",
+            "docs": "/docs",
+        },
+    }
+
+
+@app.get("/bridge", include_in_schema=False)
+@app.get("/bridge_celular_pc.html", include_in_schema=False)
+def serve_bridge_html():
+    """Serve a interface HTML de câmera/ponte ao vivo caso esteja presente."""
+    if BRIDGE_HTML_PATH.is_file():
+        return FileResponse(BRIDGE_HTML_PATH, media_type="text/html")
+    raise HTTPException(status_code=404, detail="bridge_celular_pc.html não encontrado.")
+
+
+@app.get("/bridge2", include_in_schema=False)
+@app.get("/bridge_celular_pc_2.html", include_in_schema=False)
+def serve_bridge_2_html():
+    """Serve a segunda variante da interface HTML de câmera/ponte ao vivo."""
+    if BRIDGE_2_HTML_PATH.is_file():
+        return FileResponse(BRIDGE_2_HTML_PATH, media_type="text/html")
+    if BRIDGE_HTML_PATH.is_file():
+        return FileResponse(BRIDGE_HTML_PATH, media_type="text/html")
+    raise HTTPException(status_code=404, detail="bridge_celular_pc_2.html não encontrado.")
 
 
 @app.get("/health")
@@ -124,17 +164,26 @@ async def predict(file: UploadFile = File(...)):
             status_code=400, detail="Arquivo enviado não é uma imagem válida."
         ) from exc
 
+    probs_dict = {}
     with torch.no_grad():
         logits = model(input_tensor)
 
         if app.state.num_classes == 1:
-            prob_cubo = torch.sigmoid(logits).item()
+            prob_cubo = float(torch.sigmoid(logits).item())
+            prob_pir = 1.0 - prob_cubo
+            probs_dict = {
+                "piramide": round(prob_pir, 4),
+                "cubo": round(prob_cubo, 4),
+            }
             if prob_cubo >= 0.5:
                 raw_y, confianca = 1, prob_cubo
             else:
-                raw_y, confianca = 0, 1.0 - prob_cubo
+                raw_y, confianca = 0, prob_pir
         else:
             probs = torch.softmax(logits, dim=1)[0]
+            for idx, class_name in IDX_TO_CLASS.items():
+                if idx < len(probs):
+                    probs_dict[class_name] = round(float(probs[idx].item()), 4)
             conf_tensor, idx_tensor = torch.max(probs, dim=0)
             raw_y = int(idx_tensor.item())
             confianca = float(conf_tensor.item())
@@ -145,6 +194,7 @@ async def predict(file: UploadFile = File(...)):
             "y": UNKNOWN_CLASS_IDX,
             "acao": CLASS_TO_ACTION[UNKNOWN_CLASS_IDX],
             "confianca": round(confianca, 4),
+            "probabilidades": probs_dict,
         }
 
     return {
@@ -152,4 +202,5 @@ async def predict(file: UploadFile = File(...)):
         "y": raw_y,
         "acao": CLASS_TO_ACTION[raw_y],
         "confianca": round(confianca, 4),
+        "probabilidades": probs_dict,
     }

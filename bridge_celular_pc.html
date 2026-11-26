@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ponte Esteira Seletora IA — Visualização & Leitura Ao Vivo</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131b31;
+      --panel-2: #1a2442;
+      --border: #2a3760;
+      --text: #eef2ff;
+      --muted: #9aa7c7;
+      --accent: #3b82f6;
+      --piramide: #f59e0b;
+      --cubo: #10b981;
+      --outros: #94a3b8;
+      --danger: #ef4444;
+      --ok: #22c55e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      line-height: 1.45;
+    }
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 16px;
+    }
+    @media (max-width: 920px) {
+      .container { grid-template-columns: 1fr; }
+    }
+    header {
+      max-width: 1240px;
+      margin: 0 auto 16px auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    header .sub {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .status-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .pill {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--outros);
+    }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.warn { background: var(--piramide); box-shadow: 0 0 8px var(--piramide); }
+    .dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      background: #050811;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      aspect-ratio: 4 / 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    .video-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge-overlay {
+      background: rgba(11, 16, 32, 0.85);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+    }
+    .live-banner {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      right: 10px;
+      background: rgba(11, 16, 32, 0.9);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(6px);
+    }
+    .live-banner.y-0 { border-color: var(--piramide); }
+    .live-banner.y-1 { border-color: var(--cubo); }
+    .live-banner.y--1 { border-color: var(--outros); }
+
+    .live-class {
+      font-size: 1.35rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .y-0 .live-class { color: var(--piramide); }
+    .y-1 .live-class { color: var(--cubo); }
+    .y--1 .live-class { color: var(--outros); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 560px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    input, select {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 9px 13px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: 0.15s ease;
+    }
+    button:hover { filter: brightness(1.12); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.primary { background: var(--accent); border-color: #2563eb; color: #fff; }
+    button.success { background: #16a34a; border-color: #15803d; color: #fff; }
+    button.warn { background: #d97706; border-color: #b45309; color: #fff; }
+    button.danger { background: #dc2626; border-color: #b91c1c; color: #fff; }
+
+    .probs {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--panel-2);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .prob-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 52px;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+    }
+    .bar-bg {
+      height: 10px;
+      background: #0b1020;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+    .bar-pir { background: var(--piramide); }
+    .bar-cub { background: var(--cubo); }
+    .bar-out { background: var(--outros); }
+
+    .esp-box {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      font-size: 0.84rem;
+    }
+    .esp-box div strong {
+      color: var(--muted);
+      display: block;
+      font-size: 0.75rem;
+    }
+    .log-box {
+      background: #070b16;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      height: 210px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .log-line { word-break: break-word; }
+    .log-line.ok { color: #4ade80; }
+    .log-line.warn { color: #fbbf24; }
+    .log-line.err { color: #f87171; }
+    .log-line.info { color: #93c5fd; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>Esteira Seletora IA — Visualização Ao Vivo & Ponte ESP32</h1>
+      <div class="sub">Leitura contínua ao vivo (320×240 JPEG) + Gatilho automático do sensor ultrassônico da ESP32</div>
+    </div>
+    <div class="status-pills">
+      <span class="pill"><span id="dotApi" class="dot"></span> API: <span id="txtApi">Verificando...</span></span>
+      <span class="pill"><span id="dotCam" class="dot"></span> Câmera: <span id="txtCam">Parada</span></span>
+      <span class="pill"><span id="dotLive" class="dot"></span> Leitura Ao Vivo: <span id="txtLive">Inativa</span></span>
+      <span class="pill"><span id="dotEsp" class="dot"></span> ESP32: <span id="txtEsp">Aguardando</span></span>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- COLUNA ESQUERDA: VÍDEO AO VIVO E CLASSIFICAÇÃO EM TEMPO REAL -->
+    <section class="card">
+      <h2>
+        <span>Câmera Ao Vivo (Camo / Webcam / Celular)</span>
+        <span id="fpsBadge" style="font-size:0.78rem;color:var(--muted);">320×240 JPEG</span>
+      </h2>
+
+      <div class="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+
+        <div class="video-overlay">
+          <div class="badge-overlay" id="overlayMode">Modo: Aguardando câmera</div>
+          <div class="badge-overlay" id="overlayLatency">Latência IA: -- ms</div>
+        </div>
+
+        <div id="liveBanner" class="live-banner y--1">
+          <div>
+            <div style="font-size:0.74rem;color:var(--muted);" id="bannerSource">LEITURA AO VIVO</div>
+            <div class="live-class" id="liveClass">AGUARDANDO...</div>
+            <div style="font-size:0.8rem;color:var(--muted);" id="liveAction">Ação: --</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:0.74rem;color:var(--muted);">CONFIANÇA</div>
+            <div style="font-size:1.35rem;font-weight:800;" id="liveConf">--%</div>
+            <div style="font-size:0.75rem;color:var(--muted);" id="liveY">y = --</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barras de probabilidade ao vivo -->
+      <div class="probs">
+        <div class="prob-row">
+          <span>Pirâmide (y=0)</span>
+          <div class="bar-bg"><div id="barPir" class="bar-fill bar-pir"></div></div>
+          <span id="valPir" style="text-align:right;">0%</span>
+        </div>
+        <div class="prob-row">
+          <span>Cubo (y=1)</span>
+          <div class="bar-bg"><div id="barCub" class="bar-fill bar-cub"></div></div>
+          <span id="valCub" style="text-align:right;">0%</span>
+        </div>
+        <div class="prob-row">
+          <span>Outros (y=-1)</span>
+          <div class="bar-bg"><div id="barOut" class="bar-fill bar-out"></div></div>
+          <span id="valOut" style="text-align:right;">0%</span>
+        </div>
+      </div>
+
+      <!-- Seleção de câmera e controles de leitura ao vivo -->
+      <div class="grid-2">
+        <label>
+          Dispositivo de Câmera (Camo / USB / Webcam)
+          <select id="cameraSelect"></select>
+        </label>
+        <label>
+          Intervalo da Leitura Ao Vivo (ms)
+          <input type="number" id="liveIntervalMs" value="750" min="250" max="5000" step="50" />
+        </label>
+      </div>
+
+      <div class="btn-row">
+        <button id="btnStartCam" class="primary">1. Iniciar Câmera</button>
+        <button id="btnToggleLive" class="success">2. Ativar Leitura Ao Vivo Contínua</button>
+        <button id="btnSinglePredict">Classificar Frame Agora (Só Tela)</button>
+        <button id="btnRefreshCams">Atualizar Câmeras</button>
+      </div>
+    </section>
+
+    <!-- COLUNA DIREITA: CONFIGURAÇÃO DA API, ESP32 E GATILHO DA ESTEIRA -->
+    <section class="card">
+      <h2>
+        <span>Configuração de Rede (Render + Hotspot ESP32)</span>
+        <button id="btnCheckHealth" style="padding:4px 9px;font-size:0.76rem;">Testar /health</button>
+      </h2>
+
+      <div class="grid-2">
+        <label>
+          URL da API FastAPI (Render ou Local)
+          <input type="text" id="apiUrl" value="https://projeto-harduino-ia.onrender.com" placeholder="https://projeto-harduino-ia.onrender.com" />
+        </label>
+        <label>
+          IP / URL da ESP32 (Hotspot do Celular)
+          <input type="text" id="espIp" value="http://192.168.43.100" placeholder="ex.: 192.168.43.100 ou http://172.20.10.5" />
+        </label>
+      </div>
+
+      <div class="grid-2">
+        <label>
+          Polling de GET /status da ESP32 (ms)
+          <input type="number" id="espPollMs" value="400" min="150" max="3000" step="50" />
+        </label>
+        <label>
+          Cooldown após enviar POST /decisao (ms)
+          <input type="number" id="espCooldownMs" value="1800" min="500" max="8000" step="100" />
+        </label>
+      </div>
+
+      <div class="btn-row">
+        <button id="btnToggleEsp" class="warn">3. Ativar Monitoramento da Esteira (ESP32)</button>
+        <button id="btnTriggerDecisao">Forçar Captura → IA → POST /decisao</button>
+      </div>
+
+      <div class="esp-box">
+        <div>
+          <strong>Estado da Peça (GET /status)</strong>
+          <span id="espPecaStatus">Sem conexão</span>
+        </div>
+        <div>
+          <strong>Distância / Sensor</strong>
+          <span id="espDistancia">-- cm</span>
+        </div>
+        <div>
+          <strong>Última Decisão Enviada à ESP32</strong>
+          <span id="espLastDecisao">Nenhuma</span>
+        </div>
+        <div>
+          <strong>Contador de Peças Processadas</strong>
+          <span id="espCount">0 peças</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:6px;">
+          Teste Manual Rápido de Atuadores na ESP32 (POST /decisao):
+        </div>
+        <div class="btn-row">
+          <button id="btnForcePir" style="border-color:var(--piramide);">Pirâmide (y=0 | GPIO 13 200ms)</button>
+          <button id="btnForceCub" style="border-color:var(--cubo);">Cubo (y=1 | GPIO 14 500ms)</button>
+          <button id="btnForcePass">Passar Reto (y=-1)</button>
+        </div>
+      </div>
+
+      <h2 style="margin-top:4px;">
+        <span>Registro de Eventos (Tempo Real)</span>
+        <button id="btnClearLog" style="padding:3px 8px;font-size:0.74rem;">Limpar</button>
+      </h2>
+      <div id="logBox" class="log-box"></div>
+    </section>
+  </main>
+
+  <script>
+    // Elementos de UI
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const cameraSelect = document.getElementById("cameraSelect");
+    const liveIntervalInput = document.getElementById("liveIntervalMs");
+    const apiUrlInput = document.getElementById("apiUrl");
+    const espIpInput = document.getElementById("espIp");
+    const espPollInput = document.getElementById("espPollMs");
+    const espCooldownInput = document.getElementById("espCooldownMs");
+
+    const dotApi = document.getElementById("dotApi");
+    const txtApi = document.getElementById("txtApi");
+    const dotCam = document.getElementById("dotCam");
+    const txtCam = document.getElementById("txtCam");
+    const dotLive = document.getElementById("dotLive");
+    const txtLive = document.getElementById("txtLive");
+    const dotEsp = document.getElementById("dotEsp");
+    const txtEsp = document.getElementById("txtEsp");
+
+    const overlayMode = document.getElementById("overlayMode");
+    const overlayLatency = document.getElementById("overlayLatency");
+    const liveBanner = document.getElementById("liveBanner");
+    const bannerSource = document.getElementById("bannerSource");
+    const liveClass = document.getElementById("liveClass");
+    const liveAction = document.getElementById("liveAction");
+    const liveConf = document.getElementById("liveConf");
+    const liveY = document.getElementById("liveY");
+
+    const barPir = document.getElementById("barPir");
+    const valPir = document.getElementById("valPir");
+    const barCub = document.getElementById("barCub");
+    const valCub = document.getElementById("valCub");
+    const barOut = document.getElementById("barOut");
+    const valOut = document.getElementById("valOut");
+
+    const espPecaStatus = document.getElementById("espPecaStatus");
+    const espDistancia = document.getElementById("espDistancia");
+    const espLastDecisao = document.getElementById("espLastDecisao");
+    const espCount = document.getElementById("espCount");
+    const logBox = document.getElementById("logBox");
+
+    // Estado de execução e travas de concorrência
+    let mediaStream = null;
+    let liveActive = false;
+    let liveTimer = null;
+    let isPredicting = false;           // Evita encavalar chamadas POST /predict
+    let isProcessingEspTrigger = false; // Prioriza e protege o gatilho da esteira
+    let espActive = false;
+    let espTimer = null;
+    let isPollingEsp = false;
+    let lastDecisionTimestamp = 0;
+    let totalPiecesProcessed = 0;
+    let lastLivePrediction = null;
+
+    // Carrega configurações salvas (facilita troca de IP no hotspot do celular)
+    const params = new URLSearchParams(window.location.search);
+    const savedApi = params.get("api") || localStorage.getItem("harduino_api_url");
+    const savedEsp = params.get("esp") || localStorage.getItem("harduino_esp_ip");
+    if (savedApi) apiUrlInput.value = savedApi;
+    if (savedEsp) espIpInput.value = savedEsp;
+
+    apiUrlInput.addEventListener("change", () => {
+      localStorage.setItem("harduino_api_url", getBaseApiUrl());
+      checkApiHealth();
+    });
+    espIpInput.addEventListener("change", () => {
+      localStorage.setItem("harduino_esp_ip", getBaseEspUrl());
+    });
+
+    function getBaseApiUrl() {
+      let url = apiUrlInput.value.trim().replace(/\/+$/, "");
+      if (url && !/^https?:\/\//i.test(url)) url = "https://" + url;
+      return url;
+    }
+
+    function getBaseEspUrl() {
+      let url = espIpInput.value.trim().replace(/\/+$/, "");
+      if (url && !/^https?:\/\//i.test(url)) url = "http://" + url;
+      return url;
+    }
+
+    function addLog(msg, type = "info") {
+      const line = document.createElement("div");
+      line.className = `log-line ${type}`;
+      const now = new Date().toLocaleTimeString("pt-BR", { hour12: false });
+      line.textContent = `[${now}] ${msg}`;
+      logBox.prepend(line);
+      while (logBox.children.length > 120) {
+        logBox.removeChild(logBox.lastChild);
+      }
+    }
+
+    document.getElementById("btnClearLog").addEventListener("click", () => {
+      logBox.innerHTML = "";
+    });
+
+    // 1. Verificação de saúde da API (/health)
+    async function checkApiHealth() {
+      const api = getBaseApiUrl();
+      txtApi.textContent = "Testando...";
+      dotApi.className = "dot warn";
+      try {
+        const res = await fetch(`${api}/health`, { method: "GET" });
+        const data = await res.json();
+        if (res.ok && data.modelo_carregado) {
+          dotApi.className = "dot ok";
+          txtApi.textContent = `Online (${data.num_classes || 3} classes)`;
+          addLog(`API pronta em ${api} (modelo_carregado=true, limiar=${data.confidence_threshold})`, "ok");
+        } else {
+          dotApi.className = "dot warn";
+          txtApi.textContent = "Sem Modelo";
+          addLog(`API respondeu, mas modelo_carregado=${data.modelo_carregado}`, "warn");
+        }
+      } catch (err) {
+        dotApi.className = "dot err";
+        txtApi.textContent = "Offline / Erro";
+        addLog(`Falha ao conectar em ${api}/health: ${err.message}`, "err");
+      }
+    }
+
+    document.getElementById("btnCheckHealth").addEventListener("click", checkApiHealth);
+
+    // 2. Câmera (Camo / Webcam / Celular)
+    async function listCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === "videoinput");
+        const currentVal = cameraSelect.value;
+        cameraSelect.innerHTML = "";
+        videoDevices.forEach((dev, idx) => {
+          const opt = document.createElement("option");
+          opt.value = dev.deviceId;
+          opt.textContent = dev.label || `Câmera ${idx + 1}`;
+          cameraSelect.appendChild(opt);
+        });
+        // Seleciona Camo automaticamente se encontrada e nada estiver selecionado
+        if (!currentVal) {
+          const camo = videoDevices.find(d => /camo/i.test(d.label));
+          if (camo) cameraSelect.value = camo.deviceId;
+        } else {
+          cameraSelect.value = currentVal;
+        }
+      } catch (err) {
+        addLog(`Não foi possível listar câmeras: ${err.message}`, "warn");
+      }
+    }
+
+    async function startCamera() {
+      try {
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(t => t.stop());
+        }
+        const selectedDeviceId = cameraSelect.value;
+        const constraints = {
+          audio: false,
+          video: selectedDeviceId
+            ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+            : { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
+        };
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = mediaStream;
+        await video.play();
+        await listCameras();
+
+        dotCam.className = "dot ok";
+        txtCam.textContent = "Ativa";
+        overlayMode.textContent = "Câmera Ao Vivo Ativa";
+        addLog("Câmera iniciada com sucesso (captura JPEG padronizada em 320x240).", "ok");
+      } catch (err) {
+        dotCam.className = "dot err";
+        txtCam.textContent = "Erro";
+        addLog(`Erro ao iniciar câmera: ${err.message}`, "err");
+      }
+    }
+
+    document.getElementById("btnStartCam").addEventListener("click", startCamera);
+    document.getElementById("btnRefreshCams").addEventListener("click", listCameras);
+    cameraSelect.addEventListener("change", () => {
+      if (mediaStream) startCamera();
+    });
+
+    // Captura frame atual do vídeo em JPEG 320x240
+    function captureFrameBlob(quality = 0.85) {
+      return new Promise((resolve, reject) => {
+        if (!mediaStream || video.readyState < 2) {
+          reject(new Error("Câmera ainda não está pronta."));
+          return;
+        }
+        ctx.drawImage(video, 0, 0, 320, 240);
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error("Falha ao codificar frame JPEG."));
+        }, "image/jpeg", quality);
+      });
+    }
+
+    // Atualiza o painel visual com o retorno da IA
+    function updatePredictionUI(data, latencyMs, sourceLabel = "LEITURA AO VIVO") {
+      lastLivePrediction = data;
+      bannerSource.textContent = sourceLabel;
+      overlayLatency.textContent = `Latência IA: ${latencyMs} ms`;
+
+      const y = Number(data.y);
+      liveBanner.className = `live-banner y-${y}`;
+
+      const labelMap = {
+        0: "PIRÂMIDE (200ms GPIO 13)",
+        1: "CUBO (500ms GPIO 14)",
+        "-1": "NÃO RECONHECIDO / PASSAR RETO"
+      };
+      liveClass.textContent = labelMap[String(y)] || (data.classe || "DESCONHECIDO").toUpperCase();
+      liveAction.textContent = `Classe: ${data.classe} | Ação: ${data.acao || "--"}`;
+      const confPct = Math.round((Number(data.confianca) || 0) * 1000) / 10;
+      liveConf.textContent = `${confPct.toFixed(1)}%`;
+      liveY.textContent = `y = ${y}`;
+
+      // Atualiza barras de probabilidade
+      let pPir = 0, pCub = 0, pOut = 0;
+      if (data.probabilidades) {
+        pPir = (data.probabilidades.piramide || 0) * 100;
+        pCub = (data.probabilidades.cubo || 0) * 100;
+        pOut = (data.probabilidades.outros || 0) * 100;
+      } else {
+        if (y === 0) pPir = confPct;
+        else if (y === 1) pCub = confPct;
+        else pOut = confPct;
+      }
+      barPir.style.width = `${Math.min(100, pPir).toFixed(1)}%`;
+      valPir.textContent = `${pPir.toFixed(1)}%`;
+      barCub.style.width = `${Math.min(100, pCub).toFixed(1)}%`;
+      valCub.textContent = `${pCub.toFixed(1)}%`;
+      barOut.style.width = `${Math.min(100, pOut).toFixed(1)}%`;
+      valOut.textContent = `${pOut.toFixed(1)}%`;
+    }
+
+    // Envia frame para POST /predict com controle de concorrência
+    async function predictCurrentFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
+      if (isPredicting) {
+        if (!forceWait) return null;
+        // Se for gatilho da esteira, aguarda a requisição em voo terminar (máx 4s)
+        const startWait = Date.now();
+        while (isPredicting && Date.now() - startWait < 4000) {
+          await new Promise(r => setTimeout(r, 60));
+        }
+      }
+
+      isPredicting = true;
+      const t0 = performance.now();
+      try {
+        const blob = await captureFrameBlob(0.85);
+        const formData = new FormData();
+        formData.append("file", blob, "frame.jpg");
+
+        const api = getBaseApiUrl();
+        const res = await fetch(`${api}/predict`, {
+          method: "POST",
+          body: formData
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+        const data = await res.json();
+        const latencyMs = Math.round(performance.now() - t0);
+        updatePredictionUI(data, latencyMs, sourceLabel);
+        dotApi.className = "dot ok";
+        txtApi.textContent = "Online";
+        return data;
+      } catch (err) {
+        addLog(`Erro em POST /predict: ${err.message}`, "err");
+        return null;
+      } finally {
+        isPredicting = false;
+      }
+    }
+
+    // 3. Loop de Leitura Contínua Ao Vivo (sem acionar a esteira se não houver peça)
+    async function liveLoopTick() {
+      if (!liveActive) return;
+      // Se o gatilho da ESP32 estiver sendo processado agora, não disputa com ele
+      if (!isProcessingEspTrigger && !isPredicting) {
+        await predictCurrentFrame("LEITURA AO VIVO (CONTÍNUA)", false);
+      }
+      if (liveActive) {
+        const interval = Math.max(250, Number(liveIntervalInput.value) || 750);
+        liveTimer = setTimeout(liveLoopTick, interval);
+      }
+    }
+
+    function toggleLiveReading() {
+      const btn = document.getElementById("btnToggleLive");
+      if (!liveActive) {
+        if (!mediaStream) {
+          addLog("Iniciando a câmera automaticamente para leitura ao vivo...", "info");
+          startCamera().then(() => {
+            if (mediaStream) toggleLiveReading();
+          });
+          return;
+        }
+        liveActive = true;
+        dotLive.className = "dot ok";
+        txtLive.textContent = "Ativa";
+        btn.textContent = "Pausar Leitura Ao Vivo";
+        btn.className = "danger";
+        overlayMode.textContent = espActive
+          ? "Ao Vivo + Monitorando Esteira ESP32"
+          : "Leitura Ao Vivo Contínua (Só Tela)";
+        addLog("Leitura contínua ao vivo ATIVADA.", "ok");
+        liveLoopTick();
+      } else {
+        liveActive = false;
+        if (liveTimer) clearTimeout(liveTimer);
+        dotLive.className = "dot";
+        txtLive.textContent = "Inativa";
+        btn.textContent = "2. Ativar Leitura Ao Vivo Contínua";
+        btn.className = "success";
+        overlayMode.textContent = espActive
+          ? "Monitorando Esteira ESP32"
+          : "Câmera Ativa (Leitura Pausada)";
+        addLog("Leitura contínua ao vivo PAUSADA.", "warn");
+      }
+    }
+
+    document.getElementById("btnToggleLive").addEventListener("click", toggleLiveReading);
+    document.getElementById("btnSinglePredict").addEventListener("click", async () => {
+      const res = await predictCurrentFrame("LEITURA MANUAL (TELA)", true);
+      if (res) {
+        addLog(`Classificação manual: classe=${res.classe} (y=${res.y}, conf=${(res.confianca * 100).toFixed(1)}%)`, "info");
+      }
+    });
+
+    // 4. Comunicação com a ESP32 (GET /status e POST /decisao)
+    async function sendDecisionToEsp32(decisionPayload) {
+      const espUrl = getBaseEspUrl();
+      const payload = {
+        classe: decisionPayload.classe,
+        y: Number(decisionPayload.y),
+        acao: decisionPayload.acao || (decisionPayload.y === 0 ? "desviar_piramide" : decisionPayload.y === 1 ? "desviar_cubo" : "passar_reto"),
+        confianca: Number(decisionPayload.confianca ?? 1.0)
+      };
+
+      const res = await fetch(`${espUrl}/decisao`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`ESP32 POST /decisao HTTP ${res.status}: ${text}`);
+      }
+
+      lastDecisionTimestamp = Date.now();
+      totalPiecesProcessed += 1;
+      espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
+      espCount.textContent = `${totalPiecesProcessed} peça(s)`;
+      addLog(`Decisão enviada para ESP32 (${espUrl}/decisao): y=${payload.y} (${payload.classe}) -> Esteira liberada!`, "ok");
+    }
+
+    async function handlePieceDetectedOnBelt(triggerName = "PEÇA DETECTADA NA ESTEIRA") {
+      if (isProcessingEspTrigger) return;
+      isProcessingEspTrigger = true;
+      try {
+        espPecaStatus.textContent = "PAUSADA — Lendo IA...";
+        espPecaStatus.style.color = "var(--piramide)";
+        addLog("Peça detectada (<= 15cm)! Esteira pausada. Capturando frame e consultando IA...", "warn");
+
+        const prediction = await predictCurrentFrame(triggerName, true);
+        if (!prediction) {
+          addLog("Falha ao obter predição da IA. A ESP32 manterá a esteira pausada até nova leitura ou timeout (12s).", "err");
+          return;
+        }
+
+        await sendDecisionToEsp32(prediction);
+        espPecaStatus.textContent = "Decisão enviada (Religada)";
+        espPecaStatus.style.color = "var(--ok)";
+      } catch (err) {
+        addLog(`Erro ao enviar decisão para ESP32: ${err.message}`, "err");
+      } finally {
+        isProcessingEspTrigger = false;
+      }
+    }
+
+    async function espPollTick() {
+      if (!espActive) return;
+      const cooldownMs = Math.max(500, Number(espCooldownInput.value) || 1800);
+
+      if (!isPollingEsp && !isProcessingEspTrigger && (Date.now() - lastDecisionTimestamp > cooldownMs)) {
+        isPollingEsp = true;
+        const espUrl = getBaseEspUrl();
+        try {
+          const ctrl = new AbortController();
+          const timeoutId = setTimeout(() => ctrl.abort(), 2500);
+          const res = await fetch(`${espUrl}/status`, {
+            method: "GET",
+            signal: ctrl.signal
+          });
+          clearTimeout(timeoutId);
+
+          if (res.ok) {
+            const statusData = await res.json();
+            dotEsp.className = "dot ok";
+            txtEsp.textContent = "Conectada";
+
+            if (statusData.distancia_cm !== undefined) {
+              espDistancia.textContent = `${Number(statusData.distancia_cm).toFixed(1)} cm`;
+            } else if (statusData.distancia !== undefined) {
+              espDistancia.textContent = `${Number(statusData.distancia).toFixed(1)} cm`;
+            } else {
+              espDistancia.textContent = "Ativo (<= 15cm)";
+            }
+
+            if (statusData.peca_detectada === true) {
+              await handlePieceDetectedOnBelt("GATILHO ESP32 (PEÇA NA ESTEIRA)");
+            } else {
+              espPecaStatus.textContent = "Esteira rodando (Livre)";
+              espPecaStatus.style.color = "var(--text)";
+            }
+          } else {
+            dotEsp.className = "dot warn";
+            txtEsp.textContent = `HTTP ${res.status}`;
+          }
+        } catch (err) {
+          dotEsp.className = "dot err";
+          txtEsp.textContent = "Sem resposta";
+          espPecaStatus.textContent = "Offline / Verifique IP";
+          espPecaStatus.style.color = "var(--danger)";
+        } finally {
+          isPollingEsp = false;
+        }
+      }
+
+      if (espActive) {
+        const pollMs = Math.max(150, Number(espPollInput.value) || 400);
+        espTimer = setTimeout(espPollTick, pollMs);
+      }
+    }
+
+    function toggleEspMonitoring() {
+      const btn = document.getElementById("btnToggleEsp");
+      if (!espActive) {
+        espActive = true;
+        dotEsp.className = "dot warn";
+        txtEsp.textContent = "Conectando...";
+        btn.textContent = "Parar Monitoramento da ESP32";
+        btn.className = "danger";
+        overlayMode.textContent = liveActive
+          ? "Ao Vivo + Monitorando Esteira ESP32"
+          : "Monitorando Esteira ESP32";
+        addLog(`Monitorando GET ${getBaseEspUrl()}/status...`, "info");
+        espPollTick();
+      } else {
+        espActive = false;
+        if (espTimer) clearTimeout(espTimer);
+        dotEsp.className = "dot";
+        txtEsp.textContent = "Pausada";
+        btn.textContent = "3. Ativar Monitoramento da Esteira (ESP32)";
+        btn.className = "warn";
+        addLog("Monitoramento da ESP32 pausado.", "warn");
+      }
+    }
+
+    document.getElementById("btnToggleEsp").addEventListener("click", toggleEspMonitoring);
+    document.getElementById("btnTriggerDecisao").addEventListener("click", () => {
+      handlePieceDetectedOnBelt("DISPARO MANUAL → ESP32");
+    });
+
+    // Botões de teste rápido dos atuadores
+    document.getElementById("btnForcePir").addEventListener("click", async () => {
+      try {
+        await sendDecisionToEsp32({ classe: "piramide", y: 0, acao: "desviar_piramide", confianca: 1.0 });
+      } catch (e) { addLog(e.message, "err"); }
+    });
+    document.getElementById("btnForceCub").addEventListener("click", async () => {
+      try {
+        await sendDecisionToEsp32({ classe: "cubo", y: 1, acao: "desviar_cubo", confianca: 1.0 });
+      } catch (e) { addLog(e.message, "err"); }
+    });
+    document.getElementById("btnForcePass").addEventListener("click", async () => {
+      try {
+        await sendDecisionToEsp32({ classe: "nao_reconhecido", y: -1, acao: "passar_reto", confianca: 1.0 });
+      } catch (e) { addLog(e.message, "err"); }
+    });
+
+    // Inicialização
+    listCameras();
+    checkApiHealth();
+  </script>
+</body>
+</html>

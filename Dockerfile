@@ -13,9 +13,11 @@ WORKDIR /app
 COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt
 
-# Copia apenas o código da API/modelo e os pesos treinados (data/ fica fora via .dockerignore)
+# Copia o código da API/modelo, os pesos treinados e as interfaces HTML de visualização ao vivo (data/ fica fora via .dockerignore)
 COPY src/ ./src/
 COPY model/ ./model/
+COPY bridge_celular_pc.html ./bridge_celular_pc.html
+COPY bridge_celular_pc_2.html ./bridge_celular_pc_2.html
 
 EXPOSE 7860
 

@@ -12,10 +12,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Código ESP32 e ponte webcam/celular (não necessários no repositório da API)
+# Código ESP32 local (mantendo pontes HTML/Python versionadas na branch)
 esp32/
 codigo_espion.c
-bridge_celular_pc.html
 
 # Arquivos de explicação e resumos locais
 como_usar_a_ia.md
