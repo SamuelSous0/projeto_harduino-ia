@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Esteira Seletora IA — Visualização Ao Vivo & ESP32</title>
+  <title>Esteira Seletora IA — Painel MQTT (WSS) & Visualização Ao Vivo</title>
+  <!-- Biblioteca oficial MQTT.js para conexão WSS segura (compatível com Safari iOS, Chrome Android e Desktop) -->
+  <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
   <style>
     :root {
       --bg: #0b1020;
@@ -28,17 +30,17 @@
       line-height: 1.45;
     }
     .container {
-      max-width: 1160px;
+      max-width: 1180px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
+      grid-template-columns: 1.18fr 0.82fr;
       gap: 14px;
     }
     @media (max-width: 900px) {
       .container { grid-template-columns: 1fr; }
     }
     header {
-      max-width: 1160px;
+      max-width: 1180px;
       margin: 0 auto 14px auto;
       background: var(--panel);
       border: 1px solid var(--border);
@@ -77,7 +79,7 @@
     .esp-connect-banner {
       padding: 11px 14px;
       border-radius: 10px;
-      font-size: 0.88rem;
+      font-size: 0.86rem;
       font-weight: 700;
       border: 2px solid var(--border);
       background: var(--panel-2);
@@ -85,11 +87,17 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
+      flex-wrap: wrap;
     }
     .esp-connect-banner.connected {
       border-color: var(--ok);
       background: rgba(34, 197, 94, 0.14);
       color: #4ade80;
+    }
+    .esp-connect-banner.connecting {
+      border-color: var(--piramide);
+      background: rgba(245, 158, 11, 0.14);
+      color: #fbbf24;
     }
     .esp-connect-banner.disconnected {
       border-color: var(--danger);
@@ -171,7 +179,7 @@
     .live-banner.y--1 { border-color: var(--outros); }
 
     .live-class {
-      font-size: 1.25rem;
+      font-size: 1.22rem;
       font-weight: 800;
       text-transform: uppercase;
     }
@@ -183,19 +191,25 @@
       display: flex;
       flex-direction: column;
       gap: 5px;
-      font-size: 0.84rem;
+      font-size: 0.82rem;
       color: var(--muted);
       font-weight: 600;
     }
-    .input-row { display: flex; gap: 8px; }
-    .input-row input { flex: 1; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 560px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
     input, select {
       background: var(--panel-2);
       color: var(--text);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 0.95rem;
+      padding: 9px 11px;
+      font-size: 0.9rem;
       outline: none;
     }
     .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -204,17 +218,20 @@
       border: 1px solid var(--border);
       background: var(--panel-2);
       color: var(--text);
-      padding: 11px 14px;
+      padding: 10px 13px;
       border-radius: 8px;
-      font-size: 0.88rem;
+      font-size: 0.86rem;
       font-weight: 700;
       text-align: center;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      transition: 0.15s ease;
     }
+    button:hover, .btn-file:hover { filter: brightness(1.12); }
     button.primary, .btn-file.primary { background: var(--accent); border-color: #2563eb; color: #fff; }
     button.success, .btn-file.success { background: #16a34a; border-color: #15803d; color: #fff; }
+    button.warn { background: #d97706; border-color: #b45309; color: #fff; }
 
     .probs {
       display: flex;
@@ -255,8 +272,8 @@
       border-radius: 8px;
       padding: 10px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.78rem;
-      height: 200px;
+      font-size: 0.77rem;
+      height: 210px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -273,21 +290,21 @@
 
   <header>
     <div>
-      <h1>Esteira Seletora IA — Ponte Universal (PC & Celular)</h1>
-      <div class="sub">Funciona em qualquer lugar: PC (Camo/Webcam) ou Celular (mesmo pelo WhatsApp)</div>
+      <h1>Esteira Seletora IA — Painel Web MQTT Seguro (WSS)</h1>
+      <div class="sub">100% compatível com iOS (Safari/Chrome), Android e PC via HTTPS sem bloqueio de IP local</div>
     </div>
     <div class="status-pills">
       <span class="pill"><span id="dotApi" class="dot"></span> IA Render: <span id="txtApi">Verificando...</span></span>
-      <span class="pill"><span id="dotCam" class="dot"></span> Câmera: <span id="txtCam">Pronta</span></span>
-      <span class="pill"><span id="dotEsp" class="dot"></span> ESP32: <span id="txtEsp">Aguardando IP</span></span>
+      <span class="pill"><span id="dotMqtt" class="dot"></span> Broker WSS: <span id="txtMqtt">Conectando...</span></span>
+      <span class="pill"><span id="dotEsp" class="dot"></span> ESP32: <span id="txtEsp">Aguardando</span></span>
     </div>
   </header>
 
   <main class="container">
-    <!-- ESQUERDA: CÂMERA AO VIVO + FALLBACK UNIVERSAL PARA CELULAR/WHATSAPP -->
+    <!-- ESQUERDA: CÂMERA AO VIVO & CLASSIFICAÇÃO IA -->
     <section class="card">
       <h2>
-        <span>Visualização & Leitura da Peça</span>
+        <span>Visualização & Leitura Ao Vivo</span>
         <span style="font-size:0.78rem;color:var(--muted);">320×240 JPEG</span>
       </h2>
 
@@ -303,7 +320,7 @@
 
         <div id="liveBanner" class="live-banner y--1">
           <div>
-            <div style="font-size:0.74rem;color:var(--muted);" id="bannerSource">LEITURA DA IA</div>
+            <div style="font-size:0.74rem;color:var(--muted);" id="bannerSource">LEITURA AO VIVO</div>
             <div class="live-class" id="liveClass">AGUARDANDO...</div>
             <div style="font-size:0.8rem;color:var(--muted);" id="liveAction">Ação: --</div>
           </div>
@@ -334,8 +351,8 @@
         </div>
       </div>
 
-      <label id="camSelectWrap">
-        Escolher Câmera (Camo / Celular / Webcam)
+      <label>
+        Escolher Câmera (Camo / Celular Traseira / Webcam)
         <select id="cameraSelect"></select>
       </label>
 
@@ -343,37 +360,37 @@
         <button id="btnStartAll" class="success" style="flex:1;">
           ▶ Iniciar Câmera Ao Vivo + Esteira
         </button>
-        <!-- Botão universal que funciona MESMO dentro do visualizador do WhatsApp ou file:// no celular -->
-        <label class="btn-file primary" style="flex:1;margin:0;color:#fff;">
-          📷 Câmera do Celular (Foto → IA → ESP32)
-          <input type="file" id="mobileCameraInput" accept="image/*" capture="environment" style="display:none;" />
-        </label>
+        <button id="btnToggleLive" class="primary">Leitura Ao Vivo: ON</button>
       </div>
     </section>
 
-    <!-- DIREITA: CONEXÃO COM A ESP32 -->
+    <!-- DIREITA: CONEXÃO MQTT (WSS) COM A ESP32 -->
     <section class="card">
       <h2>
-        <span>Conexão com a ESP32</span>
+        <span>Conexão MQTT Seguro (WSS) — iOS / Android / PC</span>
+        <button id="btnReconnectMqtt" class="primary" style="padding:5px 10px;font-size:0.78rem;">Conectar MQTT</button>
       </h2>
 
-      <label>
-        IP da ESP32 (Wi-Fi / Hotspot)
-        <div class="input-row">
-          <input type="text" id="espIp" value="192.168.1.100" placeholder="Ex.: 192.168.1.100" />
-          <button id="btnConnectEsp" class="primary">Conectar ESP32</button>
-        </div>
-      </label>
+      <div id="espConnectBanner" class="esp-connect-banner connecting">
+        <span id="espConnectText">⏳ Conectando ao Broker MQTT (WSS)...</span>
+        <span id="espIpBadge" style="font-size:0.76rem;opacity:0.9;">WSS TLS</span>
+      </div>
 
-      <div id="espConnectBanner" class="esp-connect-banner">
-        <span id="espConnectText">⏳ Digite o IP da ESP32 e clique em Conectar</span>
-        <span id="espPingTime" style="font-size:0.76rem;opacity:0.85;">--</span>
+      <div class="grid-2">
+        <label>
+          Broker WebSocket Seguro (WSS)
+          <input type="text" id="mqttBrokerUrl" value="wss://broker.hivemq.com:8884/mqtt" />
+        </label>
+        <label>
+          Prefixo do Tópico do Projeto
+          <input type="text" id="mqttTopicPrefix" value="esteira-esp32-projeto" />
+        </label>
       </div>
 
       <div class="esp-box">
         <div>
           <strong>Status da Esteira</strong>
-          <span id="espPecaStatus">Aguardando conexão</span>
+          <span id="espPecaStatus">Aguardando MQTT...</span>
         </div>
         <div>
           <strong>Sensor Ultrassônico</strong>
@@ -389,8 +406,20 @@
         </div>
       </div>
 
+      <div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;font-weight:600;">
+          Comandos Diretos via MQTT (`esteira-esp32-projeto/comando`):
+        </div>
+        <div class="btn-row">
+          <button id="btnCmdPir" style="border-color:var(--piramide);">Pirâmide (y=0)</button>
+          <button id="btnCmdCub" style="border-color:var(--cubo);">Cubo (y=1)</button>
+          <button id="btnCmdReto">Passar Reto (y=-1)</button>
+          <button id="btnCmdForceIa" class="warn">Capturar → IA → MQTT</button>
+        </div>
+      </div>
+
       <h2 style="margin-top:4px;">
-        <span>Monitor da Ponte & ESP32 (Tempo Real)</span>
+        <span>Monitor da Ponte & ESP32 (MQTT em Tempo Real)</span>
         <button id="btnClearLog" style="padding:3px 8px;font-size:0.74rem;">Limpar</button>
       </h2>
       <div id="logBox" class="log-box"></div>
@@ -399,28 +428,27 @@
 
   <script>
     const API_URL = "https://projeto-harduino-ia.onrender.com";
-    const LIVE_INTERVAL_MS = 700;
-    const ESP_POLL_MS = 450;
-    const ESP_COOLDOWN_MS = 1800;
+    const LIVE_INTERVAL_MS = 750;
+    const TRIGGER_COOLDOWN_MS = 2000;
 
     const video = document.getElementById("video");
     const previewImg = document.getElementById("previewImg");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const cameraSelect = document.getElementById("cameraSelect");
-    const mobileCameraInput = document.getElementById("mobileCameraInput");
-    const espIpInput = document.getElementById("espIp");
+    const mqttBrokerInput = document.getElementById("mqttBrokerUrl");
+    const mqttPrefixInput = document.getElementById("mqttTopicPrefix");
 
     const dotApi = document.getElementById("dotApi");
     const txtApi = document.getElementById("txtApi");
-    const dotCam = document.getElementById("dotCam");
-    const txtCam = document.getElementById("txtCam");
+    const dotMqtt = document.getElementById("dotMqtt");
+    const txtMqtt = document.getElementById("txtMqtt");
     const dotEsp = document.getElementById("dotEsp");
     const txtEsp = document.getElementById("txtEsp");
 
     const espConnectBanner = document.getElementById("espConnectBanner");
     const espConnectText = document.getElementById("espConnectText");
-    const espPingTime = document.getElementById("espPingTime");
+    const espIpBadge = document.getElementById("espIpBadge");
 
     const overlayMode = document.getElementById("overlayMode");
     const overlayLatency = document.getElementById("overlayLatency");
@@ -445,28 +473,23 @@
     const logBox = document.getElementById("logBox");
 
     let mediaStream = null;
-    let systemRunning = false;
+    let liveReadingEnabled = true;
     let isPredicting = false;
     let isProcessingEspTrigger = false;
-    let isPollingEsp = false;
-    let espConnectedState = false;
     let lastDecisionTimestamp = 0;
     let totalPiecesProcessed = 0;
+    let lastPredictionData = null;
 
-    if (location.hostname && location.hostname !== "localhost" && !location.protocol.startsWith("file") && !location.protocol.startsWith("content")) {
-      espIpInput.value = location.hostname;
-    } else if (localStorage.getItem("harduino_esp_ip")) {
-      espIpInput.value = localStorage.getItem("harduino_esp_ip").replace(/^https?:\/\//i, "");
-    }
-    espIpInput.addEventListener("input", () => {
-      try { localStorage.setItem("harduino_esp_ip", espIpInput.value.trim()); } catch (e) {}
-      espConnectedState = false;
-    });
+    let mqttClient = null;
+    let espSeenOnline = false;
+    let lastEspHeartbeatTs = 0;
 
-    function getBaseEspUrl() {
-      let url = espIpInput.value.trim().replace(/\/+$/, "");
-      if (url && !/^https?:\/\//i.test(url)) url = "http://" + url;
-      return url;
+    function getTopics() {
+      const prefix = (mqttPrefixInput.value.trim() || "esteira-esp32-projeto").replace(/\/+$/, "");
+      return {
+        status: `${prefix}/status`,
+        comando: `${prefix}/comando`
+      };
     }
 
     function addLog(msg, type = "info") {
@@ -475,13 +498,14 @@
       const now = new Date().toLocaleTimeString("pt-BR", { hour12: false });
       line.textContent = `[${now}] ${msg}`;
       logBox.prepend(line);
-      while (logBox.children.length > 100) logBox.removeChild(logBox.lastChild);
+      while (logBox.children.length > 120) logBox.removeChild(logBox.lastChild);
     }
 
     document.getElementById("btnClearLog").addEventListener("click", () => {
       logBox.innerHTML = "";
     });
 
+    // 1. Verificação da API no Render
     async function checkApiHealth() {
       try {
         const res = await fetch(`${API_URL}/health`);
@@ -489,7 +513,7 @@
         if (res.ok && data.modelo_carregado) {
           dotApi.className = "dot ok";
           txtApi.textContent = "Online";
-          addLog(`IA Render conectada (modelo carregado).`, "ok");
+          addLog(`IA Render conectada (modelo_carregado=true, ${data.num_classes} classes).`, "ok");
         } else {
           dotApi.className = "dot warn";
           txtApi.textContent = "Sem Modelo";
@@ -500,51 +524,164 @@
       }
     }
 
-    async function checkEspConnection(manualClick = false) {
-      const espUrl = getBaseEspUrl();
-      if (!espUrl) return null;
-      const t0 = performance.now();
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 2200);
-        const query = manualClick ? "?connect=1" : "";
-        const res = await fetch(`${espUrl}/status${query}`, { method: "GET", signal: ctrl.signal });
-        clearTimeout(timer);
+    // 2. Conexão MQTT via WebSocket Seguro (WSS) — Funciona em iOS, Android e Desktop HTTPS!
+    function connectMQTT() {
+      const brokerUrl = mqttBrokerInput.value.trim() || "wss://broker.hivemq.com:8884/mqtt";
+      const topics = getTopics();
 
-        if (res.ok) {
-          const st = await res.json();
-          const pingMs = Math.round(performance.now() - t0);
-          dotEsp.className = "dot ok";
-          txtEsp.textContent = "Conectada";
-          espConnectBanner.className = "esp-connect-banner connected";
-          espConnectText.textContent = `✔ ESP32 CONECTADA (${espIpInput.value.trim()})`;
-          espPingTime.textContent = `${pingMs} ms`;
-
-          if (!espConnectedState || manualClick) {
-            espConnectedState = true;
-            addLog(`CONECTADO À ESP32 em ${espUrl}! A ESP32 também confirmou no Monitor Serial.`, "ok");
-          }
-          return st;
-        }
-      } catch (err) {
-        dotEsp.className = "dot err";
-        txtEsp.textContent = "Desconectada";
-        espConnectBanner.className = "esp-connect-banner disconnected";
-        espConnectText.textContent = `✖ Sem resposta da ESP32 (${espIpInput.value.trim()})`;
-        espPingTime.textContent = "Offline";
-        if (espConnectedState || manualClick) {
-          espConnectedState = false;
-          addLog(`Sem resposta de ${espUrl}/status. Confirme se estão no mesmo Wi-Fi/Hotspot.`, "err");
-        }
+      if (mqttClient) {
+        try { mqttClient.end(true); } catch (e) {}
       }
-      return null;
+
+      dotMqtt.className = "dot warn";
+      txtMqtt.textContent = "Conectando...";
+      espConnectBanner.className = "esp-connect-banner connecting";
+      espConnectText.textContent = `⏳ Conectando ao Broker WSS...`;
+
+      const clientId = "PainelVercel-" + Math.random().toString(16).substring(2, 10);
+      addLog(`Conectando ao Broker MQTT via WSS (${brokerUrl}) como ${clientId}...`, "info");
+
+      mqttClient = mqtt.connect(brokerUrl, {
+        clientId,
+        clean: true,
+        connectTimeout: 8000,
+        reconnectPeriod: 3000,
+        keepalive: 30
+      });
+
+      mqttClient.on("connect", () => {
+        dotMqtt.className = "dot ok";
+        txtMqtt.textContent = "Conectado (WSS)";
+        addLog(`Broker MQTT conectado com sucesso via WSS! Assinando ${topics.status}...`, "ok");
+
+        mqttClient.subscribe(topics.status, { qos: 0 }, (err) => {
+          if (!err) {
+            espConnectBanner.className = "esp-connect-banner connected";
+            espConnectText.textContent = `✔ MQTT WSS Ativo (${topics.status})`;
+            // Envia ping de handshake para a ESP32 avisar no Monitor Serial e responder imediatamente
+            const handshake = JSON.stringify({
+              tipo: "ping_ponte",
+              origem: navigator.userAgent.includes("iPhone") || navigator.userAgent.includes("iPad")
+                ? "iOS Safari/Chrome (Vercel HTTPS)"
+                : "Painel Web Vercel (HTTPS)"
+            });
+            mqttClient.publish(topics.comando, handshake);
+          } else {
+            addLog(`Erro ao assinar tópico ${topics.status}: ${err.message}`, "err");
+          }
+        });
+      });
+
+      mqttClient.on("message", async (topic, message) => {
+        if (topic !== getTopics().status) return;
+        try {
+          const st = JSON.parse(message.toString());
+          lastEspHeartbeatTs = Date.now();
+
+          dotEsp.className = "dot ok";
+          txtEsp.textContent = "Online via MQTT";
+          espConnectBanner.className = "esp-connect-banner connected";
+          espConnectText.textContent = `✔ ESP32 CONECTADA VIA MQTT`;
+          if (st.ip) espIpBadge.textContent = `ESP32 IP: ${st.ip}`;
+
+          if (!espSeenOnline || st.evento === "ponte_conectada" || st.evento === "esp32_online") {
+            espSeenOnline = true;
+            addLog(`ESP32 confirmou conexão MQTT! (IP local da ESP32: ${st.ip || "ativo"})`, "ok");
+          }
+
+          // Atualiza Sensor Ultrassônico
+          if (st.distancia_cm !== undefined && Number(st.distancia_cm) > 0) {
+            espDistancia.textContent = `${Number(st.distancia_cm).toFixed(1)} cm`;
+          } else {
+            espDistancia.textContent = "Sem objeto (>15cm)";
+          }
+
+          // Atualiza Peças Classificadas e Última Decisão vindas do status da ESP32
+          if (st.pecas_classificadas !== undefined) {
+            totalPiecesProcessed = Number(st.pecas_classificadas);
+            espCount.textContent = `${totalPiecesProcessed} peça(s)`;
+          }
+          if (st.ultima_decisao && st.ultima_decisao !== "nenhuma") {
+            espLastDecisao.textContent = `${String(st.ultima_decisao).toUpperCase()} (y=${st.ultimo_y ?? "--"})`;
+          }
+
+          // Verifica se a ESP32 detectou peça e pausou a esteira
+          if (st.peca_detectada === true) {
+            espPecaStatus.textContent = "PAUSADA — Peça detectada (<= 15cm)";
+            espPecaStatus.style.color = "var(--piramide)";
+
+            // Dispara automaticamente a captura da câmera -> IA -> publicação no tópico de comando!
+            if (!isProcessingEspTrigger && (Date.now() - lastDecisionTimestamp > TRIGGER_COOLDOWN_MS)) {
+              await handlePieceDetectedViaMqtt();
+            }
+          } else {
+            espPecaStatus.textContent = "Rodando (Esteira livre)";
+            espPecaStatus.style.color = "var(--ok)";
+          }
+        } catch (err) {
+          addLog(`Mensagem MQTT recebida: ${message.toString()}`, "info");
+        }
+      });
+
+      mqttClient.on("reconnect", () => {
+        dotMqtt.className = "dot warn";
+        txtMqtt.textContent = "Reconectando...";
+      });
+
+      mqttClient.on("error", (err) => {
+        dotMqtt.className = "dot err";
+        txtMqtt.textContent = "Erro MQTT";
+        addLog(`Erro MQTT: ${err.message}`, "err");
+      });
     }
 
-    document.getElementById("btnConnectEsp").addEventListener("click", () => {
-      systemRunning = true;
-      checkEspConnection(true);
-    });
+    document.getElementById("btnReconnectMqtt").addEventListener("click", connectMQTT);
 
+    // Publica decisão/comando no tópico esteira-esp32-projeto/comando
+    function publishCommandToEsp32(pred) {
+      const topics = getTopics();
+      if (!mqttClient || !mqttClient.connected) {
+        addLog("MQTT ainda não está conectado! Clique em 'Conectar MQTT'.", "err");
+        return false;
+      }
+
+      const payload = {
+        classe: pred.classe,
+        y: Number(pred.y),
+        acao: pred.acao || (pred.y === 0 ? "desviar_piramide" : pred.y === 1 ? "desviar_cubo" : "passar_reto"),
+        confianca: Number(pred.confianca ?? 1.0)
+      };
+
+      mqttClient.publish(topics.comando, JSON.stringify(payload), { qos: 0 });
+      lastDecisionTimestamp = Date.now();
+      espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
+      espPecaStatus.textContent = "Comando enviado via MQTT!";
+      espPecaStatus.style.color = "var(--ok)";
+      addLog(`Publicado em [${topics.comando}]: ${payload.classe.toUpperCase()} (y=${payload.y}, conf=${(payload.confianca * 100).toFixed(1)}%) -> Esteira liberada!`, "ok");
+      return true;
+    }
+
+    async function handlePieceDetectedViaMqtt() {
+      if (isProcessingEspTrigger) return;
+      isProcessingEspTrigger = true;
+      try {
+        addLog("ESP32 pausou a esteira (peca_detectada=true)! Capturando frame e consultando IA...", "warn");
+        if (mediaStream) {
+          const pred = await predictCurrentVideoFrame("PEÇA NA ESTEIRA → MQTT ESP32", true);
+          if (pred) {
+            publishCommandToEsp32(pred);
+          }
+        } else if (lastPredictionData) {
+          publishCommandToEsp32(lastPredictionData);
+        } else {
+          addLog("Inicie a câmera (ou use os botões de comando MQTT) para enviar a decisão à ESP32.", "warn");
+        }
+      } finally {
+        isProcessingEspTrigger = false;
+      }
+    }
+
+    // 3. Câmera Ao Vivo (iOS Safari, Android Chrome e PC Camo/Webcam)
     async function listCameras() {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
@@ -569,32 +706,23 @@
 
     async function startCamera() {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error("Navegador local bloqueou vídeo contínuo. Use o botão azul 'Câmera do Celular' ao lado ou acesse via http://IP_DA_ESP32 no Chrome.");
-        }
         if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
         const selectedId = cameraSelect.value;
         mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: selectedId
             ? { deviceId: { exact: selectedId }, width: { ideal: 640 }, height: { ideal: 480 } }
-            : { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
+            : { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } }
         });
         previewImg.style.display = "none";
         video.style.display = "block";
         video.srcObject = mediaStream;
         await video.play();
         await listCameras();
-        dotCam.className = "dot ok";
-        txtCam.textContent = "Ao Vivo";
-        overlayMode.textContent = "Vídeo & Leitura Ao Vivo Ativos";
+        overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa" : "Câmera Ao Vivo";
         addLog("Câmera ao vivo iniciada com sucesso!", "ok");
       } catch (err) {
-        dotCam.className = "dot warn";
-        txtCam.textContent = "Modo Foto Celular";
-        addLog(`Aviso: ${err.message}`, "warn");
-        // Abre automaticamente a câmera nativa do celular caso o WebView do WhatsApp bloqueie o getUserMedia
-        mobileCameraInput.click();
+        addLog(`Erro ao abrir câmera: ${err.message}`, "err");
       }
     }
 
@@ -603,6 +731,7 @@
     });
 
     function updatePredictionUI(data, latencyMs, sourceLabel) {
+      lastPredictionData = data;
       bannerSource.textContent = sourceLabel;
       overlayLatency.textContent = `IA: ${latencyMs} ms`;
 
@@ -610,8 +739,8 @@
       liveBanner.className = `live-banner y-${y}`;
 
       const labelMap = {
-        0: "PIRÂMIDE",
-        1: "CUBO",
+        0: "PIRÂMIDE (y=0)",
+        1: "CUBO (y=1)",
         "-1": "NÃO RECONHECIDO / PASSAR RETO"
       };
       liveClass.textContent = labelMap[String(y)] || (data.classe || "DESCONHECIDO").toUpperCase();
@@ -638,37 +767,6 @@
       valOut.textContent = `${pOut.toFixed(1)}%`;
     }
 
-    async function sendDecisionToEsp(pred) {
-      const espUrl = getBaseEspUrl();
-      if (!espUrl) return;
-      const payload = {
-        classe: pred.classe,
-        y: Number(pred.y),
-        acao: pred.acao,
-        confianca: Number(pred.confianca ?? 1.0)
-      };
-      try {
-        const decRes = await fetch(`${espUrl}/decisao`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if (!decRes.ok) throw new Error(`HTTP ${decRes.status}`);
-      } catch (e) {
-        // Fallback universal via GET ?y= que a ESP32 já aceita no handleDecisao()!
-        const beacon = new Image();
-        beacon.src = `${espUrl}/decisao?y=${payload.y}&t=${Date.now()}`;
-      }
-      lastDecisionTimestamp = Date.now();
-      totalPiecesProcessed++;
-      espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
-      espCount.textContent = `${totalPiecesProcessed} peça(s)`;
-      espPecaStatus.textContent = "Decisão enviada (Esteira liberada)";
-      espPecaStatus.style.color = "var(--ok)";
-      addLog(`Decisão enviada para ESP32: ${payload.classe.toUpperCase()} (y=${payload.y}) -> Esteira liberada!`, "ok");
-    }
-
-    // Captura frame do vídeo ao vivo
     function captureVideoBlob() {
       return new Promise((resolve, reject) => {
         if (!mediaStream || video.readyState < 2) return reject(new Error("Sem vídeo"));
@@ -677,9 +775,16 @@
       });
     }
 
-    async function predictBlob(blob, sourceLabel = "LEITURA AO VIVO", sendToEsp = false) {
+    async function predictCurrentVideoFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
+      if (isPredicting) {
+        if (!forceWait) return null;
+        const t0 = Date.now();
+        while (isPredicting && Date.now() - t0 < 4000) await new Promise(r => setTimeout(r, 50));
+      }
+      isPredicting = true;
       const t0 = performance.now();
       try {
+        const blob = await captureVideoBlob();
         const formData = new FormData();
         formData.append("file", blob, "frame.jpg");
         const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
@@ -688,46 +793,7 @@
         updatePredictionUI(data, Math.round(performance.now() - t0), sourceLabel);
         dotApi.className = "dot ok";
         txtApi.textContent = "Online";
-        if (sendToEsp) {
-          await sendDecisionToEsp(data);
-        }
         return data;
-      } catch (err) {
-        addLog(`Erro na IA: ${err.message}`, "err");
-        return null;
-      }
-    }
-
-    // Câmera nativa do celular (funciona em 100% dos aparelhos, inclusive dentro do WhatsApp)
-    mobileCameraInput.addEventListener("change", (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      const img = new Image();
-      img.onload = () => {
-        video.style.display = "none";
-        previewImg.style.display = "block";
-        previewImg.src = img.src;
-        ctx.drawImage(img, 0, 0, 320, 240);
-        canvas.toBlob(async (blob) => {
-          if (blob) {
-            addLog("Foto capturada no celular! Classificando na IA e enviando decisão para ESP32...", "info");
-            await predictBlob(blob, "CÂMERA DO CELULAR → ESP32", true);
-          }
-        }, "image/jpeg", 0.85);
-      };
-      img.src = URL.createObjectURL(file);
-    });
-
-    async function predictCurrentVideoFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
-      if (isPredicting) {
-        if (!forceWait) return null;
-        const t0 = Date.now();
-        while (isPredicting && Date.now() - t0 < 4000) await new Promise(r => setTimeout(r, 50));
-      }
-      isPredicting = true;
-      try {
-        const blob = await captureVideoBlob();
-        return await predictBlob(blob, sourceLabel, false);
       } catch (e) {
         return null;
       } finally {
@@ -735,58 +801,52 @@
       }
     }
 
-    // Loop de leitura contínua ao vivo
+    // Loop contínuo de leitura ao vivo na tela (não trava nem envia comando sem peça)
     setInterval(async () => {
-      if (!systemRunning || !mediaStream || isProcessingEspTrigger || isPredicting) return;
+      if (!liveReadingEnabled || !mediaStream || isProcessingEspTrigger || isPredicting) return;
       await predictCurrentVideoFrame("LEITURA AO VIVO (CONTÍNUA)", false);
     }, LIVE_INTERVAL_MS);
 
-    // Loop de monitoramento da ESP32
-    setInterval(async () => {
-      if (!systemRunning || isPollingEsp || isProcessingEspTrigger) return;
-      if (Date.now() - lastDecisionTimestamp < ESP_COOLDOWN_MS) return;
-
-      isPollingEsp = true;
-      try {
-        const st = await checkEspConnection(false);
-        if (st) {
-          if (st.distancia_cm !== undefined && Number(st.distancia_cm) > 0) {
-            espDistancia.textContent = `${Number(st.distancia_cm).toFixed(1)} cm`;
-          } else {
-            espDistancia.textContent = "Livre";
-          }
-
-          if (st.peca_detectada === true) {
-            isProcessingEspTrigger = true;
-            espPecaStatus.textContent = "PAUSADA — Classificando peça...";
-            espPecaStatus.style.color = "var(--piramide)";
-            addLog("ESP32 detectou peça na esteira! Lendo IA e enviando decisão...", "warn");
-
-            if (mediaStream) {
-              const pred = await predictCurrentVideoFrame("PEÇA NA ESTEIRA → ESP32", true);
-              if (pred) await sendDecisionToEsp(pred);
-            } else {
-              addLog("Toque em '📷 Câmera do Celular' para fotografar a peça parada na esteira!", "warn");
-            }
-          } else {
-            espPecaStatus.textContent = "Rodando (Aguardando peça)";
-            espPecaStatus.style.color = "var(--text)";
-          }
-        }
-      } finally {
-        isPollingEsp = false;
-        isProcessingEspTrigger = false;
+    // Verifica se a ESP32 ficou mais de 6s sem enviar heartbeat MQTT
+    setInterval(() => {
+      if (espSeenOnline && (Date.now() - lastEspHeartbeatTs > 6500)) {
+        dotEsp.className = "dot warn";
+        txtEsp.textContent = "Sem sinal (>6s)";
       }
-    }, ESP_POLL_MS);
+    }, 2000);
 
-    document.getElementById("btnStartAll").addEventListener("click", async () => {
-      systemRunning = true;
-      checkEspConnection(true);
+    document.getElementById("btnStartAll").addEventListener("click", async (e) => {
       await startCamera();
+      if (!mqttClient || !mqttClient.connected) connectMQTT();
+      e.target.textContent = "✔ Câmera Ao Vivo + MQTT Ativos";
     });
 
+    document.getElementById("btnToggleLive").addEventListener("click", (e) => {
+      liveReadingEnabled = !liveReadingEnabled;
+      e.target.textContent = liveReadingEnabled ? "Leitura Ao Vivo: ON" : "Leitura Ao Vivo: OFF";
+      e.target.className = liveReadingEnabled ? "primary" : "";
+    });
+
+    // Botões de comando direto via MQTT
+    document.getElementById("btnCmdPir").addEventListener("click", () => {
+      publishCommandToEsp32({ classe: "piramide", y: 0, acao: "desviar_piramide", confianca: 1.0 });
+    });
+    document.getElementById("btnCmdCub").addEventListener("click", () => {
+      publishCommandToEsp32({ classe: "cubo", y: 1, acao: "desviar_cubo", confianca: 1.0 });
+    });
+    document.getElementById("btnCmdReto").addEventListener("click", () => {
+      publishCommandToEsp32({ classe: "nao_reconhecido", y: -1, acao: "passar_reto", confianca: 1.0 });
+    });
+    document.getElementById("btnCmdForceIa").addEventListener("click", async () => {
+      if (!mediaStream) await startCamera();
+      const pred = await predictCurrentVideoFrame("CAPTURA MANUAL → MQTT ESP32", true);
+      if (pred) publishCommandToEsp32(pred);
+    });
+
+    // Inicia conexões automaticamente ao abrir a página
     listCameras();
     checkApiHealth();
+    connectMQTT();
   </script>
 </body>
 </html>
