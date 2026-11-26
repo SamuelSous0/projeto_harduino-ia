@@ -141,14 +141,13 @@
       object-fit: cover;
       background: #000;
     }
-    /* Mira quadrada central (mostra exatamente a região 1:1 enviada para a CNN 128x128) */
     .roi-guide {
       position: absolute;
-      width: 58%;
+      width: 56%;
       aspect-ratio: 1 / 1;
-      border: 2px dashed rgba(59, 130, 246, 0.85);
+      border: 2px dashed rgba(59, 130, 246, 0.9);
       border-radius: 12px;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.32);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.34);
       pointer-events: none;
       display: flex;
       align-items: flex-start;
@@ -157,7 +156,7 @@
       transition: width 0.2s ease, border-color 0.2s ease;
     }
     .roi-guide span {
-      background: rgba(11, 16, 32, 0.82);
+      background: rgba(11, 16, 32, 0.85);
       color: #93c5fd;
       font-size: 0.68rem;
       font-weight: 700;
@@ -165,13 +164,12 @@
       border-radius: 999px;
       border: 1px solid rgba(59, 130, 246, 0.5);
     }
-    /* Miniatura do recorte exato que a IA está enxergando */
     .crop-preview-box {
       position: absolute;
       top: 46px;
       right: 10px;
-      width: 72px;
-      height: 72px;
+      width: 74px;
+      height: 74px;
       border-radius: 8px;
       border: 2px solid var(--accent);
       overflow: hidden;
@@ -341,7 +339,7 @@
   <header>
     <div>
       <h1>Esteira Seletora IA — Painel Web MQTT Seguro (WSS)</h1>
-      <div class="sub">Recorte Quadrado 1:1 (Sem Distorção) + Votação Multi-Frame para Máxima Precisão da CNN</div>
+      <div class="sub">Fusão CNN PyTorch (Render) + Visão Geométrica/Cromática 1:1 para Máxima Precisão</div>
     </div>
     <div class="status-pills">
       <span class="pill"><span id="dotApi" class="dot"></span> IA Render: <span id="txtApi">Verificando...</span></span>
@@ -351,25 +349,22 @@
   </header>
 
   <main class="container">
-    <!-- ESQUERDA: CÂMERA AO VIVO COM MIRA QUADRADA 1:1 (SEM DISTORÇÃO) -->
+    <!-- ESQUERDA: CÂMERA AO VIVO COM MIRA QUADRADA 1:1 -->
     <section class="card">
       <h2>
         <span>Visualização & Enquadramento da Peça (1:1 Square Crop)</span>
-        <span style="font-size:0.78rem;color:var(--muted);">256×256 → CNN 128×128</span>
+        <span style="font-size:0.78rem;color:var(--muted);">CNN + Geometria</span>
       </h2>
 
       <div class="video-wrap">
         <video id="video" autoplay playsinline muted></video>
-        <!-- Canvas oculto quadrado 256x256 (proporção 1:1 exata da CNN para não achatar pirâmide/cubo) -->
         <canvas id="canvas" width="256" height="256" style="display:none;"></canvas>
 
-        <!-- Mira quadrada central que indica onde posicionar a peça na esteira -->
         <div id="roiGuide" class="roi-guide">
-          <span>ENQUADRE A PEÇA AQUI</span>
+          <span>CENTRALIZE A PEÇA AQUI</span>
         </div>
 
-        <!-- Miniatura no canto mostrando exatamente o recorte 1:1 que vai para a IA -->
-        <div class="crop-preview-box" title="Visão exata enviada para a CNN">
+        <div class="crop-preview-box" title="Recorte exato analisado pela IA">
           <canvas id="miniCanvas" width="128" height="128"></canvas>
         </div>
 
@@ -392,7 +387,6 @@
         </div>
       </div>
 
-      <!-- Barras de probabilidade suavizadas em tempo real -->
       <div class="probs">
         <div class="prob-row">
           <span>Pirâmide (y=0)</span>
@@ -417,8 +411,8 @@
           <select id="cameraSelect"></select>
         </label>
         <label>
-          Foco / Zoom na Peça (<span id="zoomValTxt">1.4x</span> — evita fundo da sala)
-          <input type="range" id="cropZoom" min="1.0" max="2.6" step="0.1" value="1.4" />
+          Foco / Zoom na Peça (<span id="zoomValTxt">1.5x</span>)
+          <input type="range" id="cropZoom" min="1.0" max="2.8" step="0.1" value="1.5" />
         </label>
       </div>
 
@@ -426,7 +420,10 @@
         <button id="btnStartAll" class="success" style="flex:1;">
           ▶ Iniciar Câmera Ao Vivo + Esteira
         </button>
-        <button id="btnToggleLive" class="primary">Leitura Ao Vivo: ON</button>
+        <button id="btnCalibrateBg" class="warn" title="Clique com a esteira vazia para memorizar a cor do fundo">
+          🎯 Calibrar Esteira Vazia
+        </button>
+        <button id="btnToggleLive" class="primary">Ao Vivo: ON</button>
       </div>
     </section>
 
@@ -448,8 +445,8 @@
           <input type="text" id="mqttBrokerUrl" value="wss://broker.hivemq.com:8884/mqtt" />
         </label>
         <label>
-          Limiar Mínimo Pirâmide/Cubo (<span id="threshTxt">58%</span>)
-          <input type="range" id="localThreshold" min="45" max="85" step="1" value="58" />
+          Limiar Mínimo Pirâmide/Cubo (<span id="threshTxt">55%</span>)
+          <input type="range" id="localThreshold" min="45" max="85" step="1" value="55" />
         </label>
       </div>
 
@@ -495,14 +492,14 @@
   <script>
     const API_URL = "https://projeto-harduino-ia.onrender.com";
     const MQTT_TOPIC_PREFIX = "esteira-esp32-projeto";
-    const LIVE_INTERVAL_MS = 700;
+    const LIVE_INTERVAL_MS = 650;
     const TRIGGER_COOLDOWN_MS = 2200;
 
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const miniCanvas = document.getElementById("miniCanvas");
-    const miniCtx = miniCanvas.getContext("2d");
+    const miniCtx = miniCanvas.getContext("2d", { willReadFrequently: true });
     const roiGuide = document.getElementById("roiGuide");
 
     const cameraSelect = document.getElementById("cameraSelect");
@@ -552,20 +549,19 @@
     let lastDecisionTimestamp = 0;
     let totalPiecesProcessed = 0;
 
-    // Histórico recente de probabilidades para média móvel (evita oscilação de 1 frame ruim)
     let probHistory = [];
     const MAX_HISTORY = 3;
+    let calibratedBgProfile = null; // Perfil opcional de esteira vazia
 
     let mqttClient = null;
     let espSeenOnline = false;
     let lastEspHeartbeatTs = 0;
 
-    // Atualiza tamanho visual da mira quadrada conforme o slider de Zoom
     function updateRoiGuideSize() {
-      const zoom = Number(cropZoomInput.value) || 1.4;
+      const zoom = Number(cropZoomInput.value) || 1.5;
       zoomValTxt.textContent = `${zoom.toFixed(1)}x`;
-      const pct = Math.round((1 / zoom) * 82);
-      roiGuide.style.width = `${Math.max(30, Math.min(82, pct))}%`;
+      const pct = Math.round((1 / zoom) * 84);
+      roiGuide.style.width = `${Math.max(28, Math.min(84, pct))}%`;
     }
     cropZoomInput.addEventListener("input", updateRoiGuideSize);
     updateRoiGuideSize();
@@ -612,7 +608,187 @@
       }
     }
 
-    // Recorta um QUADRADO CENTRAL 1:1 do vídeo com o Zoom escolhido (sem distorcer a geometria da peça!)
+    // ============================================================================
+    // ANALISADOR GEOMÉTRICO E CROMÁTICO 2D (COMPLEMENTA A CNN DO RENDER)
+    // ============================================================================
+    // Nas fotos de treino do projeto:
+    // - CUBO (y=1): faces azuis (B significativamente maior que R, saturação azulada, formato compacto quadrado/hexagonal)
+    // - PIRÂMIDE (y=0): faces brancas/cinza-claro (alta luminância, baixa saturação) com bordas retas/diagonais convergentes (triângulo/pirâmide)
+    // - OUTROS (y=-1): esteira vazia (escura/marrom uniforme), bolinha vermelha, ou esfera circular sem quinas
+    function analyzeGeometryAndColor128() {
+      const imgData = miniCtx.getImageData(0, 0, 128, 128);
+      const d = imgData.data;
+
+      // 1. Estima o fundo usando os pixels da borda externa do quadrado (anel de 10px)
+      let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
+      for (let y = 0; y < 128; y += 2) {
+        for (let x = 0; x < 128; x += 2) {
+          if (x < 12 || x > 115 || y < 12 || y > 115) {
+            const idx = (y * 128 + x) * 4;
+            bgR += d[idx];
+            bgG += d[idx + 1];
+            bgB += d[idx + 2];
+            bgCount++;
+          }
+        }
+      }
+      bgR /= Math.max(1, bgCount);
+      bgG /= Math.max(1, bgCount);
+      bgB /= Math.max(1, bgCount);
+
+      if (calibratedBgProfile) {
+        bgR = bgR * 0.5 + calibratedBgProfile.r * 0.5;
+        bgG = bgG * 0.5 + calibratedBgProfile.g * 0.5;
+        bgB = bgB * 0.5 + calibratedBgProfile.b * 0.5;
+      }
+
+      // 2. Segmenta os pixels do objeto central (x,y entre 14 e 114)
+      let fgCount = 0;
+      let bluePixels = 0;
+      let whiteBrightPixels = 0;
+      let redWarmPixels = 0;
+
+      // Para análise geométrica do contorno (largura por linha do objeto segmentado)
+      const rowLeft = new Array(128).fill(999);
+      const rowRight = new Array(128).fill(-1);
+
+      for (let y = 14; y < 114; y++) {
+        for (let x = 14; x < 114; x++) {
+          const idx = (y * 128 + x) * 4;
+          const r = d[idx], g = d[idx + 1], b = d[idx + 2];
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+          // Distância cromática e de brilho para o fundo da esteira/mesa
+          const diffBg = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+
+          // Verifica se é pixel de peça (destaca-se do fundo escuro/madeira da esteira)
+          const isBlue = (b > r + 18 && b > g + 6 && b > 70);
+          const isWhite = (lum > 115 && sat < 0.28 && (r - b) < 35);
+          const isRed = (r > b + 45 && r > g + 35 && sat > 0.35);
+
+          if (diffBg > 58 || isBlue || isWhite || isRed) {
+            fgCount++;
+            if (x < rowLeft[y]) rowLeft[y] = x;
+            if (x > rowRight[y]) rowRight[y] = x;
+
+            if (isBlue) bluePixels++;
+            else if (isWhite) whiteBrightPixels++;
+            else if (isRed) redWarmPixels++;
+          }
+        }
+      }
+
+      const areaRatio = fgCount / (100 * 100);
+
+      // Se quase não há objeto diferente do fundo (esteira vazia) ou se for objeto vermelho
+      if (areaRatio < 0.06 || redWarmPixels > fgCount * 0.35) {
+        return { piramide: 0.05, cubo: 0.05, outros: 0.90, emptyOrOther: true };
+      }
+
+      // 3. Análise da geometria do contorno vertical (Largura no topo vs meio vs base)
+      const validRows = [];
+      for (let y = 14; y < 114; y++) {
+        const w = rowRight[y] - rowLeft[y];
+        if (w >= 8) validRows.push({ y, w, left: rowLeft[y], right: rowRight[y] });
+      }
+
+      let taperScore = 0;     // Alto quando afunila em linha reta (pirâmide/triângulo)
+      let squarenessScore = 0; // Alto quando mantém largura constante com quinas (cubo)
+      let circularityScore = 0; // Alto quando segue arco circular (esfera/bolinha)
+
+      if (validRows.length >= 16) {
+        const n = validRows.length;
+        const maxW = Math.max(...validRows.map((r) => r.w), 1);
+        const topW = (validRows[Math.floor(n * 0.15)].w + validRows[Math.floor(n * 0.22)].w) / (2 * maxW);
+        const midW = (validRows[Math.floor(n * 0.48)].w + validRows[Math.floor(n * 0.52)].w) / (2 * maxW);
+        const botW = (validRows[Math.floor(n * 0.80)].w + validRows[Math.floor(n * 0.88)].w) / (2 * maxW);
+
+        // Pirâmide lateral: topo bem estreito (topW < 0.55) e base larga (botW > 0.78), aumentando linearmente
+        // Pirâmide vista de cima: quadrada mas branca (tratado na fusão com cor/arestas internas)
+        const linearMidExpected = (topW + botW) * 0.5;
+        const bulge = midW - linearMidExpected; // Esfera tem bulge positivo alto (~0.20+)
+
+        if (topW < 0.58 && botW > 0.75 && bulge < 0.14) {
+          taperScore = 0.85;
+        } else if (botW < 0.58 && topW > 0.75 && bulge < 0.14) {
+          taperScore = 0.85; // Pirâmide apontando para baixo na câmera
+        }
+
+        if (bulge > 0.17 && topW < 0.72 && botW < 0.72) {
+          circularityScore = 0.80; // Perfil arredondado de esfera/bolinha
+        } else if (topW > 0.65 && midW > 0.75 && botW > 0.65 && bulge < 0.16) {
+          squarenessScore = 0.80; // Perfil de bloco/cubo
+        }
+      }
+
+      const blueRatio = bluePixels / Math.max(1, fgCount);
+      const whiteRatio = whiteBrightPixels / Math.max(1, fgCount);
+
+      // Pontuação heurística calibrada com as peças reais do projeto
+      let sPir = 0.15;
+      let sCub = 0.15;
+      let sOut = 0.15;
+
+      // Cubo azul: forte presença de azul + geometria não-esférica
+      if (blueRatio > 0.22) {
+        if (circularityScore > 0.70 && squarenessScore < 0.4) {
+          // Esfera azul (outros_02.jpg) vs Cubo azul
+          sOut += 0.45;
+          sCub += 0.30;
+        } else {
+          sCub += 0.68 + squarenessScore * 0.25;
+        }
+      }
+
+      // Pirâmide branca: forte presença de branco + afunilamento triangular ou faces com vincos
+      if (whiteRatio > 0.24 && blueRatio < 0.20) {
+        if (taperScore > 0.5) {
+          sPir += 0.78;
+        } else if (circularityScore > 0.72) {
+          // Esfera branca / bolinha de papel redonda
+          sOut += 0.55;
+          sPir += 0.22;
+        } else {
+          // Pirâmide vista de cima/diagonal (PIR5.jpeg)
+          sPir += 0.62;
+        }
+      }
+
+      // Mesmo se a luz alterar a cor, a geometria triangular pura puxa para pirâmide
+      if (taperScore > 0.7 && blueRatio < 0.25) {
+        sPir += 0.45;
+      }
+
+      const total = sPir + sCub + sOut;
+      return {
+        piramide: sPir / total,
+        cubo: sCub / total,
+        outros: sOut / total,
+        emptyOrOther: false
+      };
+    }
+
+    // Calibra a cor da esteira vazia com 1 clique
+    document.getElementById("btnCalibrateBg").addEventListener("click", () => {
+      if (!mediaStream) {
+        addLog("Inicie a câmera primeiro para calibrar a esteira vazia.", "warn");
+        return;
+      }
+      captureSquareCroppedBlob().then(() => {
+        const imgData = miniCtx.getImageData(24, 24, 80, 80).data;
+        let r = 0, g = 0, b = 0, n = imgData.length / 4;
+        for (let i = 0; i < imgData.length; i += 4) {
+          r += imgData[i]; g += imgData[i + 1]; b += imgData[i + 2];
+        }
+        calibratedBgProfile = { r: r / n, g: g / n, b: b / n };
+        addLog("Fundo da esteira vazia calibrado com sucesso! Agora coloque as peças.", "ok");
+      });
+    });
+
+    // Recorta um QUADRADO CENTRAL 1:1 do vídeo com leve normalização de contraste
     function captureSquareCroppedBlob() {
       return new Promise((resolve, reject) => {
         if (!mediaStream || video.readyState < 2 || !video.videoWidth) {
@@ -620,16 +796,16 @@
         }
         const vw = video.videoWidth;
         const vh = video.videoHeight;
-        const zoom = Math.max(1.0, Number(cropZoomInput.value) || 1.4);
+        const zoom = Math.max(1.0, Number(cropZoomInput.value) || 1.5);
 
-        // Lado do quadrado central no frame original
         const minSide = Math.min(vw, vh);
         const cropSide = Math.round(minSide / zoom);
         const sx = Math.round((vw - cropSide) / 2);
         const sy = Math.round((vh - cropSide) / 2);
 
-        // Desenha sem esticar no canvas 256x256 (1:1) e na miniatura 128x128
+        ctx.filter = "contrast(1.08) brightness(1.04)";
         ctx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, 256, 256);
+        ctx.filter = "none";
         miniCtx.drawImage(canvas, 0, 0, 128, 128);
 
         canvas.toBlob(
@@ -640,19 +816,17 @@
       });
     }
 
-    // Decide a classe final usando as probabilidades reais da CNN + limiar ajustável na tela
     function computeRefinedDecision(probs) {
       const pPir = Number(probs.piramide || 0);
       const pCub = Number(probs.cubo || 0);
       const pOut = Number(probs.outros || 0);
-      const minConf = (Number(localThresholdInput.value) || 58) / 100.0;
+      const minConf = (Number(localThresholdInput.value) || 55) / 100.0;
 
-      // Se "outros" for nitidamente maior que pirâmide e cubo, ou se nenhum atingir o limiar mínimo
       const bestPieceClass = pPir >= pCub ? "piramide" : "cubo";
       const bestPieceY = pPir >= pCub ? 0 : 1;
       const bestPieceProb = Math.max(pPir, pCub);
 
-      if (bestPieceProb >= minConf && bestPieceProb >= pOut * 0.85) {
+      if (bestPieceProb >= minConf && bestPieceProb >= pOut * 0.90) {
         return {
           classe: bestPieceClass,
           y: bestPieceY,
@@ -703,27 +877,55 @@
       valOut.textContent = `${pOut.toFixed(1)}%`;
     }
 
-    // Faz 1 chamada ao /predict com o recorte quadrado 1:1
+    // Combina a saída da CNN PyTorch do Render com o Analisador Geométrico/Cromático 2D
     async function callSingleSquarePredict() {
       const blob = await captureSquareCroppedBlob();
+      const geo = analyzeGeometryAndColor128();
+
+      // Se a esteira estiver nitidamente vazia na mira, nem deixa a CNN chutar cubo/pirâmide no vazio
+      if (geo.emptyOrOther) {
+        return { piramide: 0.06, cubo: 0.06, outros: 0.88 };
+      }
+
       const formData = new FormData();
       formData.append("file", blob, "crop_square.jpg");
       const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
 
-      // Extrai probabilidades brutas se a API enviou, ou reconstrói a partir de classe/confianca
+      let cnnProbs;
       if (raw.probabilidades && raw.probabilidades.piramide !== undefined) {
-        return raw.probabilidades;
+        cnnProbs = raw.probabilidades;
+      } else {
+        const c = Number(raw.confianca || 0.5);
+        if (raw.y === 0) cnnProbs = { piramide: c, cubo: (1 - c) * 0.4, outros: (1 - c) * 0.6 };
+        else if (raw.y === 1) cnnProbs = { piramide: (1 - c) * 0.4, cubo: c, outros: (1 - c) * 0.6 };
+        else {
+          // Quando o Render retorna y=-1 porque confianca < 0.75 (ex.: confianca = 0.68),
+          // o analisador geométrico/cromático resgata qual era a peça real!
+          cnnProbs = {
+            piramide: geo.piramide * c,
+            cubo: geo.cubo * c,
+            outros: Math.max(0.25, 1.0 - c)
+          };
+        }
       }
-      const c = Number(raw.confianca || 0.5);
-      if (raw.y === 0) return { piramide: c, cubo: (1 - c) * 0.5, outros: (1 - c) * 0.5 };
-      if (raw.y === 1) return { piramide: (1 - c) * 0.5, cubo: c, outros: (1 - c) * 0.5 };
-      return { piramide: (1 - c) * 0.5, cubo: (1 - c) * 0.5, outros: c };
+
+      // Fusão Ponderada (Ensemble: 55% CNN PyTorch + 45% Geometria & Cor 1:1)
+      const fused = {
+        piramide: cnnProbs.piramide * 0.55 + geo.piramide * 0.45,
+        cubo: cnnProbs.cubo * 0.55 + geo.cubo * 0.45,
+        outros: cnnProbs.outros * 0.55 + geo.outros * 0.45
+      };
+      const sum = fused.piramide + fused.cubo + fused.outros || 1;
+      return {
+        piramide: fused.piramide / sum,
+        cubo: fused.cubo / sum,
+        outros: fused.outros / sum
+      };
     }
 
-    // Leitura ao vivo com média móvel dos últimos frames
-    async function predictLiveFrame(sourceLabel = "LEITURA AO VIVO (CONTÍNUA)") {
+    async function predictLiveFrame(sourceLabel = "LEITURA AO VIVO (1:1)") {
       if (isPredicting) return null;
       isPredicting = true;
       const t0 = performance.now();
@@ -732,7 +934,6 @@
         probHistory.push(probs);
         if (probHistory.length > MAX_HISTORY) probHistory.shift();
 
-        // Média móvel para estabilizar a leitura ao vivo
         const avg = { piramide: 0, cubo: 0, outros: 0 };
         probHistory.forEach((p) => {
           avg.piramide += p.piramide / probHistory.length;
@@ -752,7 +953,6 @@
       }
     }
 
-    // Quando a peça para na esteira: captura 3 frames com a peça já estabilizada e tira a média das probabilidades!
     async function predictMultiFrameConsensus(numFrames = 3) {
       while (isPredicting) {
         await new Promise((r) => setTimeout(r, 40));
@@ -760,7 +960,6 @@
       isPredicting = true;
       const t0 = performance.now();
       try {
-        // Pequena pausa de 200ms para a peça parar de balançar após o freio da esteira
         await new Promise((r) => setTimeout(r, 200));
 
         const sum = { piramide: 0, cubo: 0, outros: 0 };
@@ -774,7 +973,7 @@
             sum.outros += p.outros;
             validCount++;
           } catch (e) {}
-          if (i < numFrames - 1) await new Promise((r) => setTimeout(r, 110));
+          if (i < numFrames - 1) await new Promise((r) => setTimeout(r, 100));
         }
 
         if (validCount === 0) return null;
@@ -797,7 +996,6 @@
       }
     }
 
-    // Conexão MQTT via WebSocket Seguro (WSS)
     function connectMQTT() {
       const brokerUrl = mqttBrokerInput.value.trim() || "wss://broker.hivemq.com:8884/mqtt";
       const topics = getTopics();
@@ -920,7 +1118,7 @@
       if (isProcessingEspTrigger) return;
       isProcessingEspTrigger = true;
       try {
-        addLog("ESP32 pausou a esteira! Fazendo leitura de consenso (3 frames quadrados 1:1)...", "warn");
+        addLog("ESP32 pausou a esteira! Fazendo leitura de consenso (3 frames + geometria)...", "warn");
         if (mediaStream) {
           const decision = await predictMultiFrameConsensus(3);
           if (decision) {
@@ -970,8 +1168,8 @@
         await video.play();
         await listCameras();
         probHistory = [];
-        overlayMode.textContent = "Recorte 1:1 Ativo";
-        addLog("Câmera iniciada! Enquadre a peça dentro do quadrado tracejado azul.", "ok");
+        overlayMode.textContent = "CNN + Geometria 1:1";
+        addLog("Câmera iniciada! Dica: clique em '🎯 Calibrar Esteira Vazia' com a esteira sem peça.", "ok");
       } catch (err) {
         addLog(`Erro ao abrir câmera: ${err.message}`, "err");
       }
@@ -983,7 +1181,7 @@
 
     setInterval(async () => {
       if (!liveReadingEnabled || !mediaStream || isProcessingEspTrigger || isPredicting) return;
-      await predictLiveFrame("LEITURA AO VIVO (1:1)");
+      await predictLiveFrame("LEITURA AO VIVO (CNN + GEOMETRIA)");
     }, LIVE_INTERVAL_MS);
 
     setInterval(() => {
@@ -996,12 +1194,12 @@
     document.getElementById("btnStartAll").addEventListener("click", async (e) => {
       await startCamera();
       if (!mqttClient || !mqttClient.connected) connectMQTT();
-      e.target.textContent = "✔ Câmera 1:1 + MQTT Ativos";
+      e.target.textContent = "✔ Câmera + MQTT Ativos";
     });
 
     document.getElementById("btnToggleLive").addEventListener("click", (e) => {
       liveReadingEnabled = !liveReadingEnabled;
-      e.target.textContent = liveReadingEnabled ? "Leitura Ao Vivo: ON" : "Leitura Ao Vivo: OFF";
+      e.target.textContent = liveReadingEnabled ? "Ao Vivo: ON" : "Ao Vivo: OFF";
       e.target.className = liveReadingEnabled ? "primary" : "";
     });
 
