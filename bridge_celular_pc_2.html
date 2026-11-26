@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ponte Esteira IA v2 — Visualização Ao Vivo & Controle ESP32</title>
+  <title>Esteira Seletora IA (v2) — Visualização Ao Vivo & ESP32</title>
   <style>
     :root {
       --bg: #090d16;
@@ -16,7 +16,6 @@
       --cubo: #10b981;
       --outros: #6b7280;
       --accent: #3b82f6;
-      --danger: #ef4444;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -25,53 +24,19 @@
       color: var(--text);
       padding: 14px;
     }
-    .top-bar {
-      max-width: 1180px;
-      margin: 0 auto 14px auto;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px 16px;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-    .top-bar h1 { font-size: 1.15rem; }
-    .badges { display: flex; flex-wrap: wrap; gap: 8px; }
-    .badge {
-      font-size: 0.78rem;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: var(--card-2);
-      border: 1px solid var(--border);
-      font-weight: 600;
-    }
-    .badge.ok { border-color: #10b981; color: #34d399; }
-    .badge.warn { border-color: #f59e0b; color: #fbbf24; }
-    .badge.err { border-color: #ef4444; color: #f87171; }
-
-    .layout {
-      max-width: 1180px;
+    .box {
+      max-width: 720px;
       margin: 0 auto;
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 14px;
-    }
-    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
-
-    .panel {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 14px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
+    h1 { font-size: 1.15rem; }
     .video-box {
-      position: relative;
       width: 100%;
       aspect-ratio: 4 / 3;
       background: #000;
@@ -80,7 +45,7 @@
       border: 2px solid var(--border);
     }
     video { width: 100%; height: 100%; object-fit: contain; }
-    .hud-result {
+    .hud {
       background: var(--card-2);
       border: 2px solid var(--border);
       border-radius: 10px;
@@ -89,50 +54,41 @@
       justify-content: space-between;
       align-items: center;
     }
-    .hud-result.y-0 { border-color: var(--piramide); }
-    .hud-result.y-1 { border-color: var(--cubo); }
-    .hud-result.y--1 { border-color: var(--outros); }
-    .hud-title { font-size: 1.5rem; font-weight: 800; }
+    .hud.y-0 { border-color: var(--piramide); }
+    .hud.y-1 { border-color: var(--cubo); }
+    .hud.y--1 { border-color: var(--outros); }
+    .hud-title { font-size: 1.45rem; font-weight: 800; }
     .y-0 .hud-title { color: var(--piramide); }
     .y-1 .hud-title { color: var(--cubo); }
     .y--1 .hud-title { color: #d1d5db; }
-
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    @media (max-width: 520px) { .row { grid-template-columns: 1fr; } }
-    label { font-size: 0.78rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 0.84rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
     input, select {
       background: var(--card-2);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 8px 10px;
+      padding: 10px 12px;
       border-radius: 8px;
-      font-size: 0.88rem;
+      font-size: 0.95rem;
     }
-    .btns { display: flex; flex-wrap: wrap; gap: 8px; }
     button {
       cursor: pointer;
-      background: var(--card-2);
-      color: var(--text);
-      border: 1px solid var(--border);
+      background: #16a34a;
+      color: #fff;
+      border: 1px solid #15803d;
       border-radius: 8px;
-      padding: 9px 12px;
-      font-size: 0.84rem;
-      font-weight: 600;
+      padding: 12px;
+      font-size: 0.95rem;
+      font-weight: 700;
     }
-    button.primary { background: var(--accent); border-color: #2563eb; }
-    button.green { background: #059669; border-color: #047857; }
-    button.amber { background: #d97706; border-color: #b45309; }
-    button.red { background: #dc2626; border-color: #b91c1c; }
-
     .log {
       background: #05070c;
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 10px;
-      height: 220px;
+      height: 150px;
       overflow-y: auto;
       font-family: monospace;
-      font-size: 0.77rem;
+      font-size: 0.78rem;
       display: flex;
       flex-direction: column;
       gap: 4px;
@@ -140,118 +96,60 @@
   </style>
 </head>
 <body>
-  <div class="top-bar">
-    <h1>Ponte Esteira Seletora IA (v2 Compacta) — Vídeo Ao Vivo + ESP32</h1>
-    <div class="badges">
-      <span id="bApi" class="badge">API: --</span>
-      <span id="bLive" class="badge">Ao Vivo: Parado</span>
-      <span id="bEsp" class="badge">ESP32: Parado</span>
+  <div class="box">
+    <h1>Esteira Seletora IA — Vídeo Ao Vivo & ESP32</h1>
+
+    <label>IP da ESP32 (Hotspot do Celular)
+      <input type="text" id="espIp" value="192.168.43.100" placeholder="Ex.: 192.168.43.100" />
+    </label>
+
+    <label>Câmera (Camo / Celular / Webcam)
+      <select id="camSel"></select>
+    </label>
+
+    <button id="btnStart">▶ Iniciar Câmera + Leitura Ao Vivo + Esteira</button>
+
+    <div class="video-box">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
     </div>
-  </div>
 
-  <div class="layout">
-    <div class="panel">
-      <div class="video-box">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+    <div id="hud" class="hud y--1">
+      <div>
+        <div id="hudMode" style="font-size:0.75rem;color:var(--muted);">LEITURA AO VIVO</div>
+        <div id="hudClass" class="hud-title">AGUARDANDO...</div>
+        <div id="hudAction" style="font-size:0.82rem;color:var(--muted);">Ação: --</div>
       </div>
-
-      <div id="hud" class="hud-result y--1">
-        <div>
-          <div id="hudMode" style="font-size:0.75rem;color:var(--muted);">AGUARDANDO LEITURA AO VIVO</div>
-          <div id="hudClass" class="hud-title">--</div>
-          <div id="hudAction" style="font-size:0.82rem;color:var(--muted);">Ação: --</div>
-        </div>
-        <div style="text-align:right;">
-          <div id="hudConf" style="font-size:1.4rem;font-weight:800;">--%</div>
-          <div id="hudY" style="font-size:0.8rem;color:var(--muted);">y = --</div>
-        </div>
-      </div>
-
-      <div class="row">
-        <label>Câmera (Camo / Celular / USB)
-          <select id="camSel"></select>
-        </label>
-        <label>Intervalo Leitura Ao Vivo (ms)
-          <input type="number" id="liveMs" value="700" min="250" max="5000" step="50" />
-        </label>
-      </div>
-
-      <div class="btns">
-        <button id="btnCam" class="primary">1. Ligar Câmera</button>
-        <button id="btnLive" class="green">2. Leitura Contínua Ao Vivo</button>
-        <button id="btnOnce">Ler Frame Agora</button>
+      <div style="text-align:right;">
+        <div id="hudConf" style="font-size:1.35rem;font-weight:800;">--%</div>
+        <div id="hudY" style="font-size:0.8rem;color:var(--muted);">y = --</div>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="row">
-        <label>URL da API (Render / FastAPI)
-          <input type="text" id="apiUrl" value="https://projeto-harduino-ia.onrender.com" />
-        </label>
-        <label>IP da ESP32 (Hotspot do Celular)
-          <input type="text" id="espIp" value="http://192.168.43.100" />
-        </label>
-      </div>
-
-      <div class="row">
-        <label>Polling GET /status (ms)
-          <input type="number" id="pollMs" value="400" min="150" max="3000" />
-        </label>
-        <label>Cooldown após POST /decisao (ms)
-          <input type="number" id="coolMs" value="1800" min="500" max="8000" />
-        </label>
-      </div>
-
-      <div class="btns">
-        <button id="btnEsp" class="amber">3. Monitorar Sensor ESP32 (GET /status)</button>
-        <button id="btnForceTrigger">Capturar + Enviar POST /decisao</button>
-      </div>
-
-      <div class="btns">
-        <button id="btnPir">Teste Pirâmide (y=0)</button>
-        <button id="btnCub">Teste Cubo (y=1)</button>
-        <button id="btnReto">Teste Passar Reto (y=-1)</button>
-      </div>
-
-      <div id="log" class="log"></div>
-    </div>
+    <div id="log" class="log"></div>
   </div>
 
   <script>
+    const API_URL = "https://projeto-harduino-ia.onrender.com";
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const camSel = document.getElementById("camSel");
-    const apiInput = document.getElementById("apiUrl");
     const espInput = document.getElementById("espIp");
-    const liveMsInput = document.getElementById("liveMs");
-    const pollMsInput = document.getElementById("pollMs");
-    const coolMsInput = document.getElementById("coolMs");
     const logEl = document.getElementById("log");
 
     let stream = null;
-    let liveOn = false, liveTimer = null;
-    let espOn = false, espTimer = null;
-    let inFlightPredict = false;
-    let inFlightTrigger = false;
-    let inFlightStatus = false;
+    let active = false;
+    let busyPredict = false;
+    let busyTrigger = false;
+    let busyStatus = false;
     let lastDecisaoAt = 0;
 
-    const qs = new URLSearchParams(location.search);
-    if (qs.get("api") || localStorage.getItem("harduino_api_url")) {
-      apiInput.value = qs.get("api") || localStorage.getItem("harduino_api_url");
+    if (localStorage.getItem("harduino_esp_ip")) {
+      espInput.value = localStorage.getItem("harduino_esp_ip").replace(/^https?:\/\//i, "");
     }
-    if (qs.get("esp") || localStorage.getItem("harduino_esp_ip")) {
-      espInput.value = qs.get("esp") || localStorage.getItem("harduino_esp_ip");
-    }
-    apiInput.addEventListener("change", () => localStorage.setItem("harduino_api_url", cleanApi()));
-    espInput.addEventListener("change", () => localStorage.setItem("harduino_esp_ip", cleanEsp()));
+    espInput.addEventListener("input", () => localStorage.setItem("harduino_esp_ip", espInput.value.trim()));
 
-    function cleanApi() {
-      let u = apiInput.value.trim().replace(/\/+$/, "");
-      return /^https?:\/\//i.test(u) ? u : "https://" + u;
-    }
     function cleanEsp() {
       let u = espInput.value.trim().replace(/\/+$/, "");
       return /^https?:\/\//i.test(u) ? u : "http://" + u;
@@ -263,38 +161,20 @@
       logEl.prepend(d);
     }
 
-    async function checkHealth() {
-      try {
-        const r = await fetch(`${cleanApi()}/health`);
-        const j = await r.json();
-        const b = document.getElementById("bApi");
-        if (r.ok && j.modelo_carregado) {
-          b.textContent = "API: Modelo OK";
-          b.className = "badge ok";
-          log(`API online (${j.num_classes} classes, modelo_carregado=true)`, "#34d399");
-        } else {
-          b.textContent = "API: Sem Modelo";
-          b.className = "badge warn";
-        }
-      } catch (e) {
-        const b = document.getElementById("bApi");
-        b.textContent = "API: Offline";
-        b.className = "badge err";
-      }
-    }
-
     async function loadCams() {
-      const devs = await navigator.mediaDevices.enumerateDevices();
-      const vids = devs.filter(d => d.kind === "videoinput");
-      camSel.innerHTML = "";
-      vids.forEach((d, i) => {
-        const o = document.createElement("option");
-        o.value = d.deviceId;
-        o.textContent = d.label || `Câmera ${i + 1}`;
-        camSel.appendChild(o);
-      });
-      const camo = vids.find(d => /camo/i.test(d.label));
-      if (camo) camSel.value = camo.deviceId;
+      try {
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        const vids = devs.filter(d => d.kind === "videoinput");
+        camSel.innerHTML = "";
+        vids.forEach((d, i) => {
+          const o = document.createElement("option");
+          o.value = d.deviceId;
+          o.textContent = d.label || `Câmera ${i + 1}`;
+          camSel.appendChild(o);
+        });
+        const camo = vids.find(d => /camo/i.test(d.label));
+        if (camo) camSel.value = camo.deviceId;
+      } catch (e) {}
     }
 
     async function startCam() {
@@ -307,7 +187,7 @@
       video.srcObject = stream;
       await video.play();
       await loadCams();
-      log("Câmera iniciada (captura JPEG 320x240).", "#34d399");
+      log("Câmera e leitura ao vivo iniciadas!", "#34d399");
     }
 
     function captureBlob() {
@@ -319,135 +199,81 @@
     }
 
     async function predictFrame(label = "LEITURA AO VIVO", waitIfBusy = false) {
-      if (inFlightPredict) {
+      if (busyPredict) {
         if (!waitIfBusy) return null;
         const t0 = Date.now();
-        while (inFlightPredict && Date.now() - t0 < 4000) {
-          await new Promise(r => setTimeout(r, 50));
-        }
+        while (busyPredict && Date.now() - t0 < 4000) await new Promise(r => setTimeout(r, 50));
       }
-      inFlightPredict = true;
+      busyPredict = true;
       try {
         const blob = await captureBlob();
         const fd = new FormData();
         fd.append("file", blob, "frame.jpg");
-        const r = await fetch(`${cleanApi()}/predict`, { method: "POST", body: fd });
+        const r = await fetch(`${API_URL}/predict`, { method: "POST", body: fd });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
 
         const hud = document.getElementById("hud");
-        hud.className = `hud-result y-${data.y}`;
+        hud.className = `hud y-${data.y}`;
         document.getElementById("hudMode").textContent = label;
-        document.getElementById("hudClass").textContent = `${(data.classe || "").toUpperCase()}`;
+        document.getElementById("hudClass").textContent = (data.classe || "").toUpperCase();
         document.getElementById("hudAction").textContent = `Ação: ${data.acao}`;
         document.getElementById("hudConf").textContent = `${((data.confianca || 0) * 100).toFixed(1)}%`;
         document.getElementById("hudY").textContent = `y = ${data.y}`;
         return data;
       } catch (e) {
-        log(`Erro /predict: ${e.message}`, "#f87171");
         return null;
       } finally {
-        inFlightPredict = false;
+        busyPredict = false;
       }
     }
 
-    async function liveLoop() {
-      if (!liveOn) return;
-      if (!inFlightTrigger && !inFlightPredict) {
-        await predictFrame("LEITURA CONTÍNUA AO VIVO", false);
-      }
-      if (liveOn) {
-        liveTimer = setTimeout(liveLoop, Math.max(250, Number(liveMsInput.value) || 700));
-      }
-    }
+    setInterval(async () => {
+      if (!active || !stream || busyTrigger || busyPredict) return;
+      await predictFrame("LEITURA AO VIVO (CONTÍNUA)", false);
+    }, 700);
 
-    async function sendDecisao(pred) {
-      const payload = {
-        classe: pred.classe,
-        y: Number(pred.y),
-        acao: pred.acao,
-        confianca: Number(pred.confianca ?? 1.0)
-      };
-      const r = await fetch(`${cleanEsp()}/decisao`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!r.ok) throw new Error(`POST /decisao HTTP ${r.status}`);
-      lastDecisaoAt = Date.now();
-      log(`POST /decisao enviado -> y=${payload.y} (${payload.classe})`, "#34d399");
-    }
-
-    async function processBeltPiece() {
-      if (inFlightTrigger) return;
-      inFlightTrigger = true;
+    setInterval(async () => {
+      if (!active || busyStatus || busyTrigger || (Date.now() - lastDecisaoAt < 1800)) return;
+      busyStatus = true;
       try {
-        log("Peça detectada na esteira (peca_detectada=true)! Classificando...", "#fbbf24");
-        const pred = await predictFrame("PEÇA NA ESTEIRA → DECISÃO ESP32", true);
-        if (pred) await sendDecisao(pred);
-      } catch (e) {
-        log(`Falha no ciclo da esteira: ${e.message}`, "#f87171");
-      } finally {
-        inFlightTrigger = false;
-      }
-    }
-
-    async function espLoop() {
-      if (!espOn) return;
-      const cool = Math.max(500, Number(coolMsInput.value) || 1800);
-      if (!inFlightStatus && !inFlightTrigger && (Date.now() - lastDecisaoAt > cool)) {
-        inFlightStatus = true;
-        try {
-          const r = await fetch(`${cleanEsp()}/status`);
-          if (r.ok) {
-            const st = await r.json();
-            const b = document.getElementById("bEsp");
-            b.textContent = st.peca_detectada ? "ESP32: Peça Detectada!" : "ESP32: Esteira Livre";
-            b.className = st.peca_detectada ? "badge warn" : "badge ok";
-            if (st.peca_detectada === true) {
-              await processBeltPiece();
+        const r = await fetch(`${cleanEsp()}/status`);
+        if (r.ok) {
+          const st = await r.json();
+          if (st.peca_detectada === true) {
+            busyTrigger = true;
+            log("Peça detectada na esteira! Classificando...", "#fbbf24");
+            const pred = await predictFrame("PEÇA NA ESTEIRA → ESP32", true);
+            if (pred) {
+              await fetch(`${cleanEsp()}/decisao`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  classe: pred.classe,
+                  y: Number(pred.y),
+                  acao: pred.acao,
+                  confianca: Number(pred.confianca ?? 1.0)
+                })
+              });
+              lastDecisaoAt = Date.now();
+              log(`Decisão enviada: ${pred.classe.toUpperCase()} (y=${pred.y})`, "#34d399");
             }
           }
-        } catch (e) {
-          const b = document.getElementById("bEsp");
-          b.textContent = "ESP32: Sem conexão";
-          b.className = "badge err";
-        } finally {
-          inFlightStatus = false;
         }
+      } catch (e) {
+      } finally {
+        busyStatus = false;
+        busyTrigger = false;
       }
-      if (espOn) {
-        espTimer = setTimeout(espLoop, Math.max(150, Number(pollMsInput.value) || 400));
-      }
-    }
+    }, 400);
 
-    document.getElementById("btnCam").onclick = startCam;
-    document.getElementById("btnOnce").onclick = () => predictFrame("LEITURA MANUAL", true);
-    document.getElementById("btnLive").onclick = async (e) => {
-      if (!stream) await startCam();
-      liveOn = !liveOn;
-      if (liveTimer) clearTimeout(liveTimer);
-      e.target.textContent = liveOn ? "Pausar Leitura Ao Vivo" : "2. Leitura Contínua Ao Vivo";
-      e.target.className = liveOn ? "red" : "green";
-      const b = document.getElementById("bLive");
-      b.textContent = liveOn ? "Ao Vivo: Ativo" : "Ao Vivo: Parado";
-      b.className = liveOn ? "badge ok" : "badge";
-      if (liveOn) liveLoop();
+    document.getElementById("btnStart").onclick = async (e) => {
+      await startCam();
+      active = true;
+      e.target.textContent = "✔ Sistema Ativo (Ao Vivo + Esteira)";
     };
-    document.getElementById("btnEsp").onclick = (e) => {
-      espOn = !espOn;
-      if (espTimer) clearTimeout(espTimer);
-      e.target.textContent = espOn ? "Parar Monitoramento ESP32" : "3. Monitorar Sensor ESP32 (GET /status)";
-      e.target.className = espOn ? "red" : "amber";
-      if (espOn) espLoop();
-    };
-    document.getElementById("btnForceTrigger").onclick = processBeltPiece;
-    document.getElementById("btnPir").onclick = () => sendDecisao({ classe: "piramide", y: 0, acao: "desviar_piramide", confianca: 1 });
-    document.getElementById("btnCub").onclick = () => sendDecisao({ classe: "cubo", y: 1, acao: "desviar_cubo", confianca: 1 });
-    document.getElementById("btnReto").onclick = () => sendDecisao({ classe: "nao_reconhecido", y: -1, acao: "passar_reto", confianca: 1 });
-
+    camSel.onchange = () => { if (stream) startCam(); };
     loadCams();
-    checkHealth();
   </script>
 </body>
 </html>
