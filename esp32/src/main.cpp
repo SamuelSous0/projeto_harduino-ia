@@ -1,21 +1,12 @@
 /*
  * Esteira Seletora - ESP32 (PlatformIO / src/main.cpp)
- * Integrada com Broker MQTT Público (HiveMQ / EMQX) + API FastAPI no Render + HTTP Local
+ * Integrada com Broker MQTT Público (HiveMQ) + API FastAPI no Render + HTTP Local
  *
- * Solução Definitiva para iOS (Safari/Chrome), Android e PC na Vercel (HTTPS):
- * - Comunicação bidirecional via MQTT (ESP32 na porta TCP 1883 <-> Painel Vercel em WSS 8884)
- * - Elimina 100% os bloqueios de Mixed Content (HTTPS -> HTTP) e isolamento de IP local no iOS!
- * - Mantém também os endpoints HTTP locais (/status e /decisao) funcionando em paralelo.
- *
- * Tópicos MQTT exclusivos do projeto:
- * - Publicação de status (1s e imediato ao detectar peça): esteira-esp32-projeto/status
- * - Recebimento de decisão/comandos da IA ou painel:      esteira-esp32-projeto/comando
- *
- * Dependências no platformio.ini:
- *   lib_deps =
- *     madhephaestus/ESP32Servo
- *     bblanchon/ArduinoJson
- *     knolleary/PubSubClient
+ * Calibração de Precisão do Ultrassônico (HC-SR04) para a velocidade da esteira:
+ * - Disparo único limpo a cada 45 ms (~22 Hz): respeita o tempo de dissipação acústica
+ *   do HC-SR04 (evita eco fantasma que acontecia com delay(3) entre amostras).
+ * - Filtro de Mediana de 3 amostras + confirmação de 2 leituras consecutivas <= 15 cm:
+ *   detecta pirâmides (faces inclinadas) e cubos em ~45-90 ms com precisão e zero falso disparo.
  */
 
 #include <Arduino.h>
@@ -52,15 +43,21 @@ const int PINO_SERVO_ESTEIRA  = 23; // Servo 360° (rotação contínua)
 const int PINO_SERVO_PIRAMIDE = 13; // SG90 -> y == 0 (piramide)
 const int PINO_SERVO_CUBO     = 14; // SG90 -> y == 1 (cubo) [GPIO 14]
 
-// ===================== PARÂMETROS DA ESTEIRA =====================
+// ===================== PARÂMETROS DA ESTEIRA E ULTRASSÔNICO =====================
 const float DISTANCIA_DETECCAO_CM = 15.0f;
+const float DISTANCIA_MIN_CM      = 1.8f;
+const float DISTANCIA_MAX_CM      = 120.0f;
+
 const int   VEL_ESTEIRA_FRENTE    = 110;
 const int   VEL_ESTEIRA_PARAR     = 90;
 
 const int   ANGULO_REPOUSO        = 20;
 const int   ANGULO_CHUTE          = 85;
 
-const unsigned long INTERVALO_ULTRASSONICO_MS = 100;
+// 45 ms entre pulsos é o ponto ideal do HC-SR04: o eco anterior já morreu completamente
+// e ainda fazemos ~22 leituras por segundo (acompanha com folga a velocidade da esteira)
+const unsigned long INTERVALO_ULTRASSONICO_MS = 45;
+const int           CONFIRMACOES_NECESSARIAS  = 2; // 2 leituras seguidas <= 15cm (~45-90ms)
 const unsigned long COOLDOWN_DETECCAO_MS      = 2500;
 const unsigned long TIMEOUT_DECISAO_MS        = 12000;
 const unsigned long INTERVALO_MQTT_STATUS_MS  = 1000;
@@ -77,6 +74,11 @@ int totalPecasClassificadas = 0;
 String ultimaClasseStr = "nenhuma";
 int ultimoY = -1;
 
+// Histórico da janela deslizante do ultrassônico para filtro de mediana
+float janelaDist[3] = {-1.0f, -1.0f, -1.0f};
+int   indiceJanela = 0;
+int   contagemPecaConsecutiva = 0;
+
 unsigned long ultimaDeteccao = 0;
 unsigned long ultimaLeituraSensor = 0;
 unsigned long ultimaLeituraPrint = 0;
@@ -86,7 +88,6 @@ unsigned long ultimaTentativaMqtt = 0;
 bool temDecisaoPendente = false;
 int  decisaoPendenteY   = -1;
 
-// Declaração antecipada para uso nos callbacks
 void publicarStatusMQTT(const char* evento = "status");
 
 // ===================== ESTEIRA E SERVOS =====================
@@ -107,40 +108,74 @@ void acionarSG90(Servo &servo, int pino, int atrasoAntesMs) {
   servo.detach(); // Solta PWM para evitar tremor contínuo
 }
 
-// ===================== ULTRASSÔNICO RÁPIDO =====================
-float lerDistanciaUnicaCM() {
+// ===================== ULTRASSÔNICO PRECISO (FILTRO DE MEDIANA + DEBOUNCE) =====================
+void resetarFiltroUltrassonico() {
+  janelaDist[0] = -1.0f;
+  janelaDist[1] = -1.0f;
+  janelaDist[2] = -1.0f;
+  contagemPecaConsecutiva = 0;
+}
+
+float lerPulsoUltrassonicoCM() {
   digitalWrite(PINO_TRIG, LOW);
   delayMicroseconds(4);
   digitalWrite(PINO_TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(PINO_TRIG, LOW);
 
-  long duracao = pulseIn(PINO_ECHO, HIGH, 5000);
-  if (duracao <= 150) {
+  // Timeout de 12000 us (~2m) evita perda de eco em superfícies inclinadas (pirâmide)
+  unsigned long duracao = pulseIn(PINO_ECHO, HIGH, 12000);
+  if (duracao == 0) {
     return -1.0f;
   }
 
   float dist = (duracao * 0.0343f) / 2.0f;
-  if (dist < 2.0f || dist > 85.0f) {
+  if (dist < DISTANCIA_MIN_CM || dist > DISTANCIA_MAX_CM) {
     return -1.0f;
   }
   return dist;
 }
 
-float lerDistanciaFiltradaCM() {
-  const int AMOSTRAS = 3;
-  float soma = 0.0f;
-  int validas = 0;
+float atualizarUltrassonicoPrecisoCM() {
+  float leituraAtual = lerPulsoUltrassonicoCM();
+  janelaDist[indiceJanela] = leituraAtual;
+  indiceJanela = (indiceJanela + 1) % 3;
 
-  for (int i = 0; i < AMOSTRAS; i++) {
-    float d = lerDistanciaUnicaCM();
-    if (d > 0.0f) {
-      soma += d;
-      validas++;
+  // Coleta as leituras válidas recentes na janela de 3 amostras
+  float validas[3];
+  int n = 0;
+  for (int i = 0; i < 3; i++) {
+    if (janelaDist[i] > 0.0f) {
+      validas[n++] = janelaDist[i];
     }
-    delay(3);
   }
-  return (validas == 0) ? -1.0f : (soma / validas);
+
+  if (n == 0) {
+    contagemPecaConsecutiva = 0;
+    return -1.0f;
+  }
+
+  // Ordena para pegar a Mediana (elimina picos espúrios de ruído acústico)
+  for (int i = 0; i < n - 1; i++) {
+    for (int j = i + 1; j < n; j++) {
+      if (validas[j] < validas[i]) {
+        float tmp = validas[i];
+        validas[i] = validas[j];
+        validas[j] = tmp;
+      }
+    }
+  }
+
+  float distEstavel = (n == 3) ? validas[1] : ((n == 2) ? (validas[0] + validas[1]) * 0.5f : validas[0]);
+
+  // Verifica confirmação consecutiva dentro da zona da peça (<= 15 cm)
+  if (leituraAtual > 0.0f && leituraAtual <= DISTANCIA_DETECCAO_CM) {
+    contagemPecaConsecutiva++;
+  } else if (distEstavel > DISTANCIA_DETECCAO_CM + 1.5f || leituraAtual < 0.0f) {
+    contagemPecaConsecutiva = 0;
+  }
+
+  return distEstavel;
 }
 
 // ===================== WARM-UP RENDER =====================
@@ -204,6 +239,7 @@ void executarDecisao(int y) {
   }
 
   pecaDetectada = false;
+  resetarFiltroUltrassonico();
   ultimaDeteccao = millis();
   publicarStatusMQTT("decisao_executada");
 }
@@ -216,7 +252,6 @@ bool agendarDecisaoJSON(const String &payload) {
     return false;
   }
 
-  // Caso o painel tenha enviado apenas um ping de handshake {"tipo":"ping_ponte"}
   if (doc["tipo"].is<const char*>()) {
     const char* tipo = doc["tipo"];
     if (strcmp(tipo, "ping_ponte") == 0) {
@@ -264,7 +299,6 @@ String montarJsonStatus(const char* evento = "status") {
 void publicarStatusMQTT(const char* evento) {
   if (!mqttClient.connected()) return;
   String json = montarJsonStatus(evento);
-  // retained = true permite que o celular/PC receba o estado atual no exato instante em que abrir o painel!
   mqttClient.publish(MQTT_TOPIC_STATUS, json.c_str(), true);
 }
 
@@ -278,7 +312,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   Serial.printf("[MQTT] Mensagem recebida em [%s]: %s\n", topic, msg.c_str());
 
-  // Aceita tanto JSON completo {"classe":"cubo","y":1,...} quanto "0", "1", "-1" direto
   if (msg == "0" || msg == "1" || msg == "-1") {
     int y = msg.toInt();
     String simulado = "{\"y\":" + String(y) + ",\"classe\":\"" +
@@ -362,6 +395,7 @@ void setup() {
 
   pinMode(PINO_TRIG, OUTPUT);
   pinMode(PINO_ECHO, INPUT);
+  digitalWrite(PINO_TRIG, LOW);
 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
@@ -402,16 +436,12 @@ void setup() {
 }
 
 void loop() {
-  // Reconexão automática de Wi-Fi se cair
   if (WiFi.status() != WL_CONNECTED) {
     WiFi.reconnect();
   }
 
-  // Mantém conexão MQTT ativa e processa mensagens do tópico de comando
   verificarConexaoMQTT();
   mqttClient.loop();
-
-  // Mantém WebServer HTTP local ativo em paralelo
   server.handleClient();
 
   if (temDecisaoPendente) {
@@ -434,32 +464,36 @@ void loop() {
     executarDecisao(-1);
   }
 
+  // Leitura precisa do ultrassônico a cada 45 ms (sem eco residual e sem travar o loop)
   if (!pecaDetectada && (agora - ultimaLeituraSensor >= INTERVALO_ULTRASSONICO_MS)) {
     ultimaLeituraSensor = agora;
-    float dist = lerDistanciaFiltradaCM();
+    float dist = atualizarUltrassonicoPrecisoCM();
     ultimaDistanciaCM = dist;
 
-    if (agora - ultimaLeituraPrint >= 500) {
+    if (agora - ultimaLeituraPrint >= 450) {
       ultimaLeituraPrint = agora;
       if (dist < 0.0f) {
         Serial.println("[ULTRASSONICO] Sem objeto proximo");
       } else {
-        Serial.printf("[ULTRASSONICO] Distancia: %.1f cm\n", dist);
+        Serial.printf("[ULTRASSONICO] Distancia estavel: %.1f cm (conf=%d/%d)\n",
+                      dist, contagemPecaConsecutiva, CONFIRMACOES_NECESSARIAS);
       }
     }
 
-    if (dist > 2.0f && dist <= DISTANCIA_DETECCAO_CM && (agora - ultimaDeteccao > COOLDOWN_DETECCAO_MS)) {
+    // Dispara apenas quando 2 leituras consecutivas confirmam a peça <= 15 cm
+    if (contagemPecaConsecutiva >= CONFIRMACOES_NECESSARIAS &&
+        dist > DISTANCIA_MIN_CM &&
+        dist <= DISTANCIA_DETECCAO_CM &&
+        (agora - ultimaDeteccao > COOLDOWN_DETECCAO_MS)) {
       pecaDetectada = true;
       ultimaDeteccao = agora;
       moverEsteira(false);
-      Serial.printf("[ULTRASSONICO] Peca detectada a %.1f cm! Esteira pausada aguardando IA...\n", dist);
-      // Publica imediatamente no MQTT para o celular/PC iniciar a leitura na hora!
+      Serial.printf("[ULTRASSONICO] Peca CONFIRMADA a %.1f cm! Esteira pausada aguardando IA...\n", dist);
       publicarStatusMQTT("peca_detectada");
       ultimoEnvioMqtt = agora;
     }
   }
 
-  // Publica o status no MQTT automaticamente a cada 1 segundo
   if (agora - ultimoEnvioMqtt >= INTERVALO_MQTT_STATUS_MS) {
     ultimoEnvioMqtt = agora;
     publicarStatusMQTT("heartbeat");
