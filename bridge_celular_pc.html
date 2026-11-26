@@ -24,7 +24,7 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      padding: 16px;
+      padding: 14px;
       line-height: 1.45;
     }
     .container {
@@ -32,14 +32,14 @@
       margin: 0 auto;
       display: grid;
       grid-template-columns: 1.2fr 0.8fr;
-      gap: 16px;
+      gap: 14px;
     }
     @media (max-width: 900px) {
       .container { grid-template-columns: 1fr; }
     }
     header {
       max-width: 1160px;
-      margin: 0 auto 16px auto;
+      margin: 0 auto 14px auto;
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -50,8 +50,8 @@
       align-items: center;
       gap: 12px;
     }
-    header h1 { font-size: 1.2rem; font-weight: 700; }
-    header .sub { font-size: 0.85rem; color: var(--muted); }
+    header h1 { font-size: 1.15rem; font-weight: 700; }
+    header .sub { font-size: 0.82rem; color: var(--muted); }
     .status-pills { display: flex; flex-wrap: wrap; gap: 8px; }
     .pill {
       font-size: 0.78rem;
@@ -74,7 +74,6 @@
     .dot.warn { background: var(--piramide); box-shadow: 0 0 8px var(--piramide); }
     .dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
 
-    /* Banner de confirmação de conexão da ESP32 */
     .esp-connect-banner {
       padding: 11px 14px;
       border-radius: 10px;
@@ -86,7 +85,6 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      transition: 0.2s ease;
     }
     .esp-connect-banner.connected {
       border-color: var(--ok);
@@ -103,13 +101,13 @@
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 16px;
+      padding: 15px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
     }
     .card h2 {
-      font-size: 1rem;
+      font-size: 0.98rem;
       font-weight: 600;
       border-bottom: 1px solid var(--border);
       padding-bottom: 8px;
@@ -130,7 +128,7 @@
       align-items: center;
       justify-content: center;
     }
-    video {
+    video, #previewImg {
       width: 100%;
       height: 100%;
       object-fit: contain;
@@ -150,11 +148,10 @@
     .badge-overlay {
       background: rgba(11, 16, 32, 0.85);
       border: 1px solid var(--border);
-      padding: 6px 10px;
+      padding: 5px 10px;
       border-radius: 8px;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 600;
-      backdrop-filter: blur(4px);
     }
     .live-banner {
       position: absolute;
@@ -168,17 +165,15 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      backdrop-filter: blur(6px);
     }
     .live-banner.y-0 { border-color: var(--piramide); }
     .live-banner.y-1 { border-color: var(--cubo); }
     .live-banner.y--1 { border-color: var(--outros); }
 
     .live-class {
-      font-size: 1.35rem;
+      font-size: 1.25rem;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
     }
     .y-0 .live-class { color: var(--piramide); }
     .y-1 .live-class { color: var(--cubo); }
@@ -192,10 +187,7 @@
       color: var(--muted);
       font-weight: 600;
     }
-    .input-row {
-      display: flex;
-      gap: 8px;
-    }
+    .input-row { display: flex; gap: 8px; }
     .input-row input { flex: 1; }
     input, select {
       background: var(--panel-2);
@@ -206,23 +198,23 @@
       font-size: 0.95rem;
       outline: none;
     }
-    input:focus, select:focus { border-color: var(--accent); }
-
     .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    button {
+    button, .btn-file {
       cursor: pointer;
       border: 1px solid var(--border);
       background: var(--panel-2);
       color: var(--text);
-      padding: 10px 14px;
+      padding: 11px 14px;
       border-radius: 8px;
       font-size: 0.88rem;
-      font-weight: 600;
-      transition: 0.15s ease;
+      font-weight: 700;
+      text-align: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
-    button:hover { filter: brightness(1.12); }
-    button.primary { background: var(--accent); border-color: #2563eb; color: #fff; }
-    button.success { background: #16a34a; border-color: #15803d; color: #fff; }
+    button.primary, .btn-file.primary { background: var(--accent); border-color: #2563eb; color: #fff; }
+    button.success, .btn-file.success { background: #16a34a; border-color: #15803d; color: #fff; }
 
     .probs {
       display: flex;
@@ -240,12 +232,7 @@
       gap: 8px;
       font-size: 0.82rem;
     }
-    .bar-bg {
-      height: 10px;
-      background: #0b1020;
-      border-radius: 999px;
-      overflow: hidden;
-    }
+    .bar-bg { height: 10px; background: #0b1020; border-radius: 999px; overflow: hidden; }
     .bar-fill { height: 100%; width: 0%; transition: width 0.2s ease; }
     .bar-pir { background: var(--piramide); }
     .bar-cub { background: var(--cubo); }
@@ -261,11 +248,7 @@
       gap: 10px;
       font-size: 0.86rem;
     }
-    .esp-box div strong {
-      color: var(--muted);
-      display: block;
-      font-size: 0.75rem;
-    }
+    .esp-box div strong { color: var(--muted); display: block; font-size: 0.75rem; }
     .log-box {
       background: #070b16;
       border: 1px solid var(--border);
@@ -273,7 +256,7 @@
       padding: 10px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.78rem;
-      height: 210px;
+      height: 200px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -290,36 +273,37 @@
 
   <header>
     <div>
-      <h1>Esteira Seletora IA — Visualização & Leitura Ao Vivo</h1>
-      <div class="sub">Informe o IP da ESP32 para conectar e inicie a câmera</div>
+      <h1>Esteira Seletora IA — Ponte Universal (PC & Celular)</h1>
+      <div class="sub">Funciona em qualquer lugar: PC (Camo/Webcam) ou Celular (mesmo pelo WhatsApp)</div>
     </div>
     <div class="status-pills">
       <span class="pill"><span id="dotApi" class="dot"></span> IA Render: <span id="txtApi">Verificando...</span></span>
-      <span class="pill"><span id="dotCam" class="dot"></span> Câmera: <span id="txtCam">Parada</span></span>
+      <span class="pill"><span id="dotCam" class="dot"></span> Câmera: <span id="txtCam">Pronta</span></span>
       <span class="pill"><span id="dotEsp" class="dot"></span> ESP32: <span id="txtEsp">Aguardando IP</span></span>
     </div>
   </header>
 
   <main class="container">
-    <!-- ESQUERDA: VÍDEO AO VIVO E CLASSIFICAÇÃO EM TEMPO REAL -->
+    <!-- ESQUERDA: CÂMERA AO VIVO + FALLBACK UNIVERSAL PARA CELULAR/WHATSAPP -->
     <section class="card">
       <h2>
-        <span>Vídeo Ao Vivo (Camo / Celular / Webcam)</span>
+        <span>Visualização & Leitura da Peça</span>
         <span style="font-size:0.78rem;color:var(--muted);">320×240 JPEG</span>
       </h2>
 
       <div class="video-wrap">
         <video id="video" autoplay playsinline muted></video>
+        <img id="previewImg" style="display:none;" alt="Frame capturado" />
         <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
 
         <div class="video-overlay">
-          <div class="badge-overlay" id="overlayMode">Aguardando câmera...</div>
+          <div class="badge-overlay" id="overlayMode">Modo: Pronto</div>
           <div class="badge-overlay" id="overlayLatency">IA: -- ms</div>
         </div>
 
         <div id="liveBanner" class="live-banner y--1">
           <div>
-            <div style="font-size:0.74rem;color:var(--muted);" id="bannerSource">LEITURA AO VIVO</div>
+            <div style="font-size:0.74rem;color:var(--muted);" id="bannerSource">LEITURA DA IA</div>
             <div class="live-class" id="liveClass">AGUARDANDO...</div>
             <div style="font-size:0.8rem;color:var(--muted);" id="liveAction">Ação: --</div>
           </div>
@@ -350,36 +334,39 @@
         </div>
       </div>
 
-      <label>
+      <label id="camSelectWrap">
         Escolher Câmera (Camo / Celular / Webcam)
         <select id="cameraSelect"></select>
       </label>
 
       <div class="btn-row">
-        <button id="btnStartAll" class="success" style="flex:1;font-size:0.95rem;padding:12px;">
-          ▶ Iniciar Câmera + Leitura Ao Vivo + Esteira
+        <button id="btnStartAll" class="success" style="flex:1;">
+          ▶ Iniciar Câmera Ao Vivo + Esteira
         </button>
-        <button id="btnToggleLive" class="primary">Leitura Ao Vivo: ON</button>
+        <!-- Botão universal que funciona MESMO dentro do visualizador do WhatsApp ou file:// no celular -->
+        <label class="btn-file primary" style="flex:1;margin:0;color:#fff;">
+          📷 Câmera do Celular (Foto → IA → ESP32)
+          <input type="file" id="mobileCameraInput" accept="image/*" capture="environment" style="display:none;" />
+        </label>
       </div>
     </section>
 
-    <!-- DIREITA: CONEXÃO COM A ESP32 E HANDSHAKE EM TEMPO REAL -->
+    <!-- DIREITA: CONEXÃO COM A ESP32 -->
     <section class="card">
       <h2>
         <span>Conexão com a ESP32</span>
       </h2>
 
       <label>
-        IP da ESP32 (Hotspot do Celular)
+        IP da ESP32 (Wi-Fi / Hotspot)
         <div class="input-row">
-          <input type="text" id="espIp" value="192.168.43.100" placeholder="Ex.: 192.168.43.100" />
+          <input type="text" id="espIp" value="192.168.1.100" placeholder="Ex.: 192.168.1.100" />
           <button id="btnConnectEsp" class="primary">Conectar ESP32</button>
         </div>
       </label>
 
-      <!-- Aviso visual imediato quando a ponte e a ESP32 se conectam -->
       <div id="espConnectBanner" class="esp-connect-banner">
-        <span id="espConnectText">⏳ Aguardando conexão com a ESP32...</span>
+        <span id="espConnectText">⏳ Digite o IP da ESP32 e clique em Conectar</span>
         <span id="espPingTime" style="font-size:0.76rem;opacity:0.85;">--</span>
       </div>
 
@@ -417,9 +404,11 @@
     const ESP_COOLDOWN_MS = 1800;
 
     const video = document.getElementById("video");
+    const previewImg = document.getElementById("previewImg");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const cameraSelect = document.getElementById("cameraSelect");
+    const mobileCameraInput = document.getElementById("mobileCameraInput");
     const espIpInput = document.getElementById("espIp");
 
     const dotApi = document.getElementById("dotApi");
@@ -457,18 +446,20 @@
 
     let mediaStream = null;
     let systemRunning = false;
-    let liveReadingEnabled = true;
     let isPredicting = false;
     let isProcessingEspTrigger = false;
     let isPollingEsp = false;
-    let espConnectedState = false; // Controla aviso de conexão/desconexão
+    let espConnectedState = false;
     let lastDecisionTimestamp = 0;
     let totalPiecesProcessed = 0;
 
-    const savedEsp = localStorage.getItem("harduino_esp_ip");
-    if (savedEsp) espIpInput.value = savedEsp.replace(/^https?:\/\//i, "");
+    if (location.hostname && location.hostname !== "localhost" && !location.protocol.startsWith("file") && !location.protocol.startsWith("content")) {
+      espIpInput.value = location.hostname;
+    } else if (localStorage.getItem("harduino_esp_ip")) {
+      espIpInput.value = localStorage.getItem("harduino_esp_ip").replace(/^https?:\/\//i, "");
+    }
     espIpInput.addEventListener("input", () => {
-      localStorage.setItem("harduino_esp_ip", espIpInput.value.trim());
+      try { localStorage.setItem("harduino_esp_ip", espIpInput.value.trim()); } catch (e) {}
       espConnectedState = false;
     });
 
@@ -509,10 +500,9 @@
       }
     }
 
-    // Testa e avisa a ESP32 e o HTML quando a conexão é estabelecida
     async function checkEspConnection(manualClick = false) {
       const espUrl = getBaseEspUrl();
-      if (!espUrl) return;
+      if (!espUrl) return null;
       const t0 = performance.now();
       try {
         const ctrl = new AbortController();
@@ -532,7 +522,7 @@
 
           if (!espConnectedState || manualClick) {
             espConnectedState = true;
-            addLog(`CONECTADO À ESP32 em ${espUrl}! JSON recebido: ${JSON.stringify(st)}`, "ok");
+            addLog(`CONECTADO À ESP32 em ${espUrl}! A ESP32 também confirmou no Monitor Serial.`, "ok");
           }
           return st;
         }
@@ -544,7 +534,7 @@
         espPingTime.textContent = "Offline";
         if (espConnectedState || manualClick) {
           espConnectedState = false;
-          addLog(`Não foi possível comunicar com a ESP32 em ${espUrl}/status. Verifique o IP do Hotspot.`, "err");
+          addLog(`Sem resposta de ${espUrl}/status. Confirme se estão no mesmo Wi-Fi/Hotspot.`, "err");
         }
       }
       return null;
@@ -557,6 +547,7 @@
 
     async function listCameras() {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(d => d.kind === "videoinput");
         const currentVal = cameraSelect.value;
@@ -578,6 +569,9 @@
 
     async function startCamera() {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Navegador local bloqueou vídeo contínuo. Use o botão azul 'Câmera do Celular' ao lado ou acesse via http://IP_DA_ESP32 no Chrome.");
+        }
         if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
         const selectedId = cameraSelect.value;
         mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -586,31 +580,27 @@
             ? { deviceId: { exact: selectedId }, width: { ideal: 640 }, height: { ideal: 480 } }
             : { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
         });
+        previewImg.style.display = "none";
+        video.style.display = "block";
         video.srcObject = mediaStream;
         await video.play();
         await listCameras();
         dotCam.className = "dot ok";
         txtCam.textContent = "Ao Vivo";
-        overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa" : "Vídeo Ao Vivo";
-        addLog("Câmera iniciada! Vídeo e leitura contínua ao vivo rodando.", "ok");
+        overlayMode.textContent = "Vídeo & Leitura Ao Vivo Ativos";
+        addLog("Câmera ao vivo iniciada com sucesso!", "ok");
       } catch (err) {
-        dotCam.className = "dot err";
-        txtCam.textContent = "Erro";
-        addLog(`Erro ao abrir câmera: ${err.message}`, "err");
+        dotCam.className = "dot warn";
+        txtCam.textContent = "Modo Foto Celular";
+        addLog(`Aviso: ${err.message}`, "warn");
+        // Abre automaticamente a câmera nativa do celular caso o WebView do WhatsApp bloqueie o getUserMedia
+        mobileCameraInput.click();
       }
     }
 
     cameraSelect.addEventListener("change", () => {
       if (mediaStream) startCamera();
     });
-
-    function captureFrameBlob() {
-      return new Promise((resolve, reject) => {
-        if (!mediaStream || video.readyState < 2) return reject(new Error("Câmera não iniciada"));
-        ctx.drawImage(video, 0, 0, 320, 240);
-        canvas.toBlob(b => b ? resolve(b) : reject(new Error("Erro JPEG")), "image/jpeg", 0.85);
-      });
-    }
 
     function updatePredictionUI(data, latencyMs, sourceLabel) {
       bannerSource.textContent = sourceLabel;
@@ -648,18 +638,48 @@
       valOut.textContent = `${pOut.toFixed(1)}%`;
     }
 
-    async function predictCurrentFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
-      if (isPredicting) {
-        if (!forceWait) return null;
-        const t0 = Date.now();
-        while (isPredicting && Date.now() - t0 < 4000) {
-          await new Promise(r => setTimeout(r, 50));
-        }
+    async function sendDecisionToEsp(pred) {
+      const espUrl = getBaseEspUrl();
+      if (!espUrl) return;
+      const payload = {
+        classe: pred.classe,
+        y: Number(pred.y),
+        acao: pred.acao,
+        confianca: Number(pred.confianca ?? 1.0)
+      };
+      try {
+        const decRes = await fetch(`${espUrl}/decisao`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!decRes.ok) throw new Error(`HTTP ${decRes.status}`);
+      } catch (e) {
+        // Fallback universal via GET ?y= que a ESP32 já aceita no handleDecisao()!
+        const beacon = new Image();
+        beacon.src = `${espUrl}/decisao?y=${payload.y}&t=${Date.now()}`;
       }
-      isPredicting = true;
+      lastDecisionTimestamp = Date.now();
+      totalPiecesProcessed++;
+      espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
+      espCount.textContent = `${totalPiecesProcessed} peça(s)`;
+      espPecaStatus.textContent = "Decisão enviada (Esteira liberada)";
+      espPecaStatus.style.color = "var(--ok)";
+      addLog(`Decisão enviada para ESP32: ${payload.classe.toUpperCase()} (y=${payload.y}) -> Esteira liberada!`, "ok");
+    }
+
+    // Captura frame do vídeo ao vivo
+    function captureVideoBlob() {
+      return new Promise((resolve, reject) => {
+        if (!mediaStream || video.readyState < 2) return reject(new Error("Sem vídeo"));
+        ctx.drawImage(video, 0, 0, 320, 240);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error("Erro JPEG")), "image/jpeg", 0.85);
+      });
+    }
+
+    async function predictBlob(blob, sourceLabel = "LEITURA AO VIVO", sendToEsp = false) {
       const t0 = performance.now();
       try {
-        const blob = await captureFrameBlob();
         const formData = new FormData();
         formData.append("file", blob, "frame.jpg");
         const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
@@ -668,23 +688,60 @@
         updatePredictionUI(data, Math.round(performance.now() - t0), sourceLabel);
         dotApi.className = "dot ok";
         txtApi.textContent = "Online";
+        if (sendToEsp) {
+          await sendDecisionToEsp(data);
+        }
         return data;
       } catch (err) {
+        addLog(`Erro na IA: ${err.message}`, "err");
+        return null;
+      }
+    }
+
+    // Câmera nativa do celular (funciona em 100% dos aparelhos, inclusive dentro do WhatsApp)
+    mobileCameraInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        video.style.display = "none";
+        previewImg.style.display = "block";
+        previewImg.src = img.src;
+        ctx.drawImage(img, 0, 0, 320, 240);
+        canvas.toBlob(async (blob) => {
+          if (blob) {
+            addLog("Foto capturada no celular! Classificando na IA e enviando decisão para ESP32...", "info");
+            await predictBlob(blob, "CÂMERA DO CELULAR → ESP32", true);
+          }
+        }, "image/jpeg", 0.85);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    async function predictCurrentVideoFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
+      if (isPredicting) {
+        if (!forceWait) return null;
+        const t0 = Date.now();
+        while (isPredicting && Date.now() - t0 < 4000) await new Promise(r => setTimeout(r, 50));
+      }
+      isPredicting = true;
+      try {
+        const blob = await captureVideoBlob();
+        return await predictBlob(blob, sourceLabel, false);
+      } catch (e) {
         return null;
       } finally {
         isPredicting = false;
       }
     }
 
-    // Loop automático de leitura contínua ao vivo
+    // Loop de leitura contínua ao vivo
     setInterval(async () => {
-      if (!systemRunning || !liveReadingEnabled || !mediaStream) return;
-      if (!isProcessingEspTrigger && !isPredicting) {
-        await predictCurrentFrame("LEITURA AO VIVO (CONTÍNUA)", false);
-      }
+      if (!systemRunning || !mediaStream || isProcessingEspTrigger || isPredicting) return;
+      await predictCurrentVideoFrame("LEITURA AO VIVO (CONTÍNUA)", false);
     }, LIVE_INTERVAL_MS);
 
-    // Loop automático de comunicação com a ESP32
+    // Loop de monitoramento da ESP32
     setInterval(async () => {
       if (!systemRunning || isPollingEsp || isProcessingEspTrigger) return;
       if (Date.now() - lastDecisionTimestamp < ESP_COOLDOWN_MS) return;
@@ -693,41 +750,23 @@
       try {
         const st = await checkEspConnection(false);
         if (st) {
-          if (st.distancia_cm !== undefined || st.distancia !== undefined) {
-            espDistancia.textContent = `${Number(st.distancia_cm ?? st.distancia).toFixed(1)} cm`;
+          if (st.distancia_cm !== undefined && Number(st.distancia_cm) > 0) {
+            espDistancia.textContent = `${Number(st.distancia_cm).toFixed(1)} cm`;
           } else {
-            espDistancia.textContent = "Ativo (<= 15cm)";
+            espDistancia.textContent = "Livre";
           }
 
           if (st.peca_detectada === true) {
             isProcessingEspTrigger = true;
             espPecaStatus.textContent = "PAUSADA — Classificando peça...";
             espPecaStatus.style.color = "var(--piramide)";
-            addLog("ESP32 avisou: Peça detectada (peca_detectada=true)! Esteira pausada. Lendo IA...", "warn");
+            addLog("ESP32 detectou peça na esteira! Lendo IA e enviando decisão...", "warn");
 
-            const pred = await predictCurrentFrame("PEÇA NA ESTEIRA → ESP32", true);
-            if (pred) {
-              const payload = {
-                classe: pred.classe,
-                y: Number(pred.y),
-                acao: pred.acao,
-                confianca: Number(pred.confianca ?? 1.0)
-              };
-              const espUrl = getBaseEspUrl();
-              const decRes = await fetch(`${espUrl}/decisao`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-              });
-              if (decRes.ok) {
-                lastDecisionTimestamp = Date.now();
-                totalPiecesProcessed++;
-                espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
-                espCount.textContent = `${totalPiecesProcessed} peça(s)`;
-                espPecaStatus.textContent = "Decisão enviada (Esteira liberada)";
-                espPecaStatus.style.color = "var(--ok)";
-                addLog(`ESP32 confirmou POST /decisao: ${payload.classe.toUpperCase()} (y=${payload.y}) -> Esteira religada!`, "ok");
-              }
+            if (mediaStream) {
+              const pred = await predictCurrentVideoFrame("PEÇA NA ESTEIRA → ESP32", true);
+              if (pred) await sendDecisionToEsp(pred);
+            } else {
+              addLog("Toque em '📷 Câmera do Celular' para fotografar a peça parada na esteira!", "warn");
             }
           } else {
             espPecaStatus.textContent = "Rodando (Aguardando peça)";
@@ -740,18 +779,10 @@
       }
     }, ESP_POLL_MS);
 
-    document.getElementById("btnStartAll").addEventListener("click", async (e) => {
-      await startCamera();
+    document.getElementById("btnStartAll").addEventListener("click", async () => {
       systemRunning = true;
       checkEspConnection(true);
-      e.target.textContent = "✔ Sistema Ativo (Câmera + Ao Vivo + Esteira ESP32)";
-    });
-
-    document.getElementById("btnToggleLive").addEventListener("click", (e) => {
-      liveReadingEnabled = !liveReadingEnabled;
-      e.target.textContent = liveReadingEnabled ? "Leitura Ao Vivo: ON" : "Leitura Ao Vivo: OFF";
-      e.target.className = liveReadingEnabled ? "primary" : "";
-      overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa" : "Somente Gatilho da Esteira";
+      await startCamera();
     });
 
     listCameras();
