@@ -1,40 +1,51 @@
 /*
  * Esteira Seletora - ESP32 (PlatformIO / src/main.cpp)
- * Integrada com Broker MQTT Público (HiveMQ) + API FastAPI no Render + HTTP Local
  *
- * Calibração de Precisão do Ultrassônico (HC-SR04) para a velocidade da esteira:
- * - Disparo único limpo a cada 45 ms (~22 Hz): respeita o tempo de dissipação acústica
- *   do HC-SR04 (evita eco fantasma que acontecia com delay(3) entre amostras).
- * - Filtro de Mediana de 3 amostras + confirmação de 2 leituras consecutivas <= 15 cm:
- *   detecta pirâmides (faces inclinadas) e cubos em ~45-90 ms com precisão e zero falso disparo.
+ * Funciona em QUALQUER lugar (Universidade / Casa / Sem Roteador):
+ * 1. BLUETOOTH BLE NATIVO ("ESP32-Esteira-IA"):
+ *    - Liga imediatamente no boot (antes mesmo do Wi-Fi!).
+ *    - Conecta direto com o navegador do PC ou Celular via Web Bluetooth,
+ *      SEM depender do firewall/Wi-Fi da Universidade e SEM precisar de IP!
+ * 2. WI-FI HTTP LOCAL (IP da ESP32 -> GET /status e POST /decisao):
+ *    - Mantém 100% o padrão original por IP (timeout de Wi-Fi de 8s para não
+ *      travar o boot caso o Wi-Fi da universidade não esteja disponível).
+ * 3. ULTRASSÔNICO PRECISO (45 ms + filtro de mediana) + SERVOS ORIGINAIS:
+ *    - TRIG GPIO 5, ECHO GPIO 18, Esteira GPIO 23, Pirâmide GPIO 13 (200ms), Cubo GPIO 14 (500ms).
  */
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <ESP32Servo.h>
-#include <PubSubClient.h>
+
+// Bibliotecas Bluetooth BLE nativas do core ESP32 (não precisa instalar nada extra no platformio.ini)
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
 // ===================== WI-FI =====================
 const char* WIFI_SSID = "XtremeFibra@Ricardo&Flavia";
 const char* WIFI_PASS = "22061978";
 
-// ===================== BROKER MQTT PÚBLICO =====================
-const char* MQTT_BROKER       = "broker.hivemq.com";
-const int   MQTT_PORT         = 1883;
-const char* MQTT_TOPIC_STATUS = "esteira-esp32-projeto/status";
-const char* MQTT_TOPIC_CMD    = "esteira-esp32-projeto/comando";
+// ===================== BLUETOOTH BLE (WEB BLUETOOTH) =====================
+#define BLE_DEVICE_NAME       "ESP32-Esteira-IA"
+#define BLE_SERVICE_UUID      "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define BLE_CHAR_STATUS_UUID  "beb5483e-36e1-4688-b7f5-ea07361b26a8" // Notify + Read (ESP32 -> Painel)
+#define BLE_CHAR_DECISAO_UUID "828917c1-565d-4797-83a9-951404a3b083" // Write (Painel -> ESP32)
+
+BLEServer* pBleServer = nullptr;
+BLECharacteristic* pStatusChar = nullptr;
+BLECharacteristic* pDecisaoChar = nullptr;
+volatile bool bleClienteConectado = false;
 
 // ===================== API DE IA (RENDER) =====================
 const char* API_HOST = "projeto-harduino-ia.onrender.com";
 const int   API_PORT = 443;
 
 WebServer server(80);
-WiFiClient espWifiClient;
-PubSubClient mqttClient(espWifiClient);
 
 // ===================== PINOS (SEGUROS NO ESP32) =====================
 const int PINO_TRIG           = 5;
@@ -54,45 +65,43 @@ const int   VEL_ESTEIRA_PARAR     = 90;
 const int   ANGULO_REPOUSO        = 20;
 const int   ANGULO_CHUTE          = 85;
 
-// 45 ms entre pulsos é o ponto ideal do HC-SR04: o eco anterior já morreu completamente
-// e ainda fazemos ~22 leituras por segundo (acompanha com folga a velocidade da esteira)
 const unsigned long INTERVALO_ULTRASSONICO_MS = 45;
-const int           CONFIRMACOES_NECESSARIAS  = 2; // 2 leituras seguidas <= 15cm (~45-90ms)
+const int           CONFIRMACOES_NECESSARIAS  = 2;
 const unsigned long COOLDOWN_DETECCAO_MS      = 2500;
 const unsigned long TIMEOUT_DECISAO_MS        = 12000;
-const unsigned long INTERVALO_MQTT_STATUS_MS  = 1000;
-const unsigned long INTERVALO_MQTT_RECONN_MS  = 3000;
+const unsigned long INTERVALO_BLE_NOTIFY_MS   = 450;
 
 Servo servoEsteira;
 Servo servoPiramide;
 Servo servoCubo;
 
 volatile bool pecaDetectada = false;
-bool esteiraRodando = true;
 float ultimaDistanciaCM = -1.0f;
 int totalPecasClassificadas = 0;
 String ultimaClasseStr = "nenhuma";
 int ultimoY = -1;
 
-// Histórico da janela deslizante do ultrassônico para filtro de mediana
 float janelaDist[3] = {-1.0f, -1.0f, -1.0f};
 int   indiceJanela = 0;
 int   contagemPecaConsecutiva = 0;
 
+bool ponteIpConectada = false;
+unsigned long ultimoPingIp = 0;
+unsigned long ultimoNotifyBle = 0;
+
 unsigned long ultimaDeteccao = 0;
 unsigned long ultimaLeituraSensor = 0;
 unsigned long ultimaLeituraPrint = 0;
-unsigned long ultimoEnvioMqtt = 0;
-unsigned long ultimaTentativaMqtt = 0;
 
 bool temDecisaoPendente = false;
 int  decisaoPendenteY   = -1;
 
-void publicarStatusMQTT(const char* evento = "status");
+// Declarações antecipadas
+bool agendarDecisaoJSON(const String &payload);
+void notificarStatusBLE();
 
 // ===================== ESTEIRA E SERVOS =====================
 void moverEsteira(bool ligada) {
-  esteiraRodando = ligada;
   servoEsteira.write(ligada ? VEL_ESTEIRA_FRENTE : VEL_ESTEIRA_PARAR);
 }
 
@@ -108,7 +117,7 @@ void acionarSG90(Servo &servo, int pino, int atrasoAntesMs) {
   servo.detach(); // Solta PWM para evitar tremor contínuo
 }
 
-// ===================== ULTRASSÔNICO PRECISO (FILTRO DE MEDIANA + DEBOUNCE) =====================
+// ===================== ULTRASSÔNICO PRECISO =====================
 void resetarFiltroUltrassonico() {
   janelaDist[0] = -1.0f;
   janelaDist[1] = -1.0f;
@@ -123,7 +132,6 @@ float lerPulsoUltrassonicoCM() {
   delayMicroseconds(10);
   digitalWrite(PINO_TRIG, LOW);
 
-  // Timeout de 12000 us (~2m) evita perda de eco em superfícies inclinadas (pirâmide)
   unsigned long duracao = pulseIn(PINO_ECHO, HIGH, 12000);
   if (duracao == 0) {
     return -1.0f;
@@ -141,7 +149,6 @@ float atualizarUltrassonicoPrecisoCM() {
   janelaDist[indiceJanela] = leituraAtual;
   indiceJanela = (indiceJanela + 1) % 3;
 
-  // Coleta as leituras válidas recentes na janela de 3 amostras
   float validas[3];
   int n = 0;
   for (int i = 0; i < 3; i++) {
@@ -155,7 +162,6 @@ float atualizarUltrassonicoPrecisoCM() {
     return -1.0f;
   }
 
-  // Ordena para pegar a Mediana (elimina picos espúrios de ruído acústico)
   for (int i = 0; i < n - 1; i++) {
     for (int j = i + 1; j < n; j++) {
       if (validas[j] < validas[i]) {
@@ -168,7 +174,6 @@ float atualizarUltrassonicoPrecisoCM() {
 
   float distEstavel = (n == 3) ? validas[1] : ((n == 2) ? (validas[0] + validas[1]) * 0.5f : validas[0]);
 
-  // Verifica confirmação consecutiva dentro da zona da peça (<= 15 cm)
   if (leituraAtual > 0.0f && leituraAtual <= DISTANCIA_DETECCAO_CM) {
     contagemPecaConsecutiva++;
   } else if (distEstavel > DISTANCIA_DETECCAO_CM + 1.5f || leituraAtual < 0.0f) {
@@ -178,45 +183,96 @@ float atualizarUltrassonicoPrecisoCM() {
   return distEstavel;
 }
 
-// ===================== WARM-UP RENDER =====================
-void acordarAPI() {
-  WiFiClientSecure client;
-  client.setInsecure();
-  client.setTimeout(60000);
+// ===================== JSON DE STATUS (USADO NO IP HTTP E NO BLUETOOTH) =====================
+String montarJsonStatus() {
+  String json = "{\"peca_detectada\":";
+  json += (pecaDetectada ? "true" : "false");
+  json += ",\"distancia_cm\":";
+  json += String(ultimaDistanciaCM, 1);
+  json += ",\"pecas_classificadas\":";
+  json += String(totalPecasClassificadas);
+  json += ",\"ultima_decisao\":\"";
+  json += ultimaClasseStr;
+  json += "\",\"ultimo_y\":";
+  json += String(ultimoY);
+  json += "}";
+  return json;
+}
 
-  Serial.println("[IA] Chamando /health para acordar a API...");
-  if (!client.connect(API_HOST, API_PORT)) {
-    Serial.println("[IA] Falha ao conectar no /health.");
-    return;
+// ===================== CALLBACKS BLUETOOTH BLE =====================
+class ServerBleCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) override {
+    bleClienteConectado = true;
+    Serial.println("[BLUETOOTH] Painel Web CONECTADO via Bluetooth BLE!");
   }
-
-  client.println("GET /health HTTP/1.1");
-  client.printf("Host: %s\r\n", API_HOST);
-  client.println("Connection: close");
-  client.println();
-
-  unsigned long inicio = millis();
-  while (client.connected() && !client.available() && (millis() - inicio < 60000)) {
-    delay(50);
+  void onDisconnect(BLEServer* pServer) override {
+    bleClienteConectado = false;
+    Serial.println("[BLUETOOTH] Painel Web desconectado do Bluetooth. Reiniciando anuncio BLE...");
+    BLEDevice::startAdvertising();
   }
+};
 
-  String resp = "";
-  while (client.available()) {
-    resp += client.readStringUntil('\n');
-  }
-  client.stop();
+class DecisaoBleCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) override {
+    std::string valor = pCharacteristic->getValue();
+    if (valor.length() > 0) {
+      String msg = String(valor.c_str());
+      msg.trim();
+      Serial.printf("[BLUETOOTH] Decisao recebida via BLE: %s\n", msg.c_str());
 
-  int ini = resp.indexOf('{');
-  int fim = resp.lastIndexOf('}');
-  if (ini != -1 && fim != -1 && fim > ini) {
-    JsonDocument doc;
-    if (!deserializeJson(doc, resp.substring(ini, fim + 1))) {
-      bool carregado = doc["modelo_carregado"] | false;
-      Serial.printf("[IA] API online! modelo_carregado = %s\n", carregado ? "true" : "false");
-      return;
+      if (msg == "0" || msg == "1" || msg == "-1") {
+        int y = msg.toInt();
+        String simulado = "{\"y\":" + String(y) + ",\"classe\":\"" +
+                          (y == 0 ? "piramide" : (y == 1 ? "cubo" : "nao_reconhecido")) +
+                          "\",\"confianca\":1.0}";
+        agendarDecisaoJSON(simulado);
+      } else {
+        agendarDecisaoJSON(msg);
+      }
     }
   }
-  Serial.println("[IA] Resposta /health recebida.");
+};
+
+void iniciarBluetoothBLE() {
+  BLEDevice::init(BLE_DEVICE_NAME);
+  pBleServer = BLEDevice::createServer();
+  pBleServer->setCallbacks(new ServerBleCallbacks());
+
+  BLEService* pService = pBleServer->createService(BLE_SERVICE_UUID);
+
+  // Característica de Status (ESP32 -> Navegador via Notify e Read)
+  pStatusChar = pService->createCharacteristic(
+    BLE_CHAR_STATUS_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  pStatusChar->addDescriptor(new BLE2902());
+
+  // Característica de Decisão (Navegador -> ESP32 via Write)
+  pDecisaoChar = pService->createCharacteristic(
+    BLE_CHAR_DECISAO_UUID,
+    BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
+  );
+  pDecisaoChar->setCallbacks(new DecisaoBleCallbacks());
+
+  pService->start();
+
+  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(BLE_SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+
+  Serial.printf("[OK] Bluetooth BLE ativo! Nome: %s (Conecta direto sem precisar de Wi-Fi/IP)\n", BLE_DEVICE_NAME);
+}
+
+void notificarStatusBLE() {
+  if (!pStatusChar) return;
+  String json = montarJsonStatus();
+  pStatusChar->setValue(json.c_str());
+  if (bleClienteConectado) {
+    pStatusChar->notify();
+  }
 }
 
 // ===================== EXECUÇÃO DA DECISÃO =====================
@@ -241,7 +297,7 @@ void executarDecisao(int y) {
   pecaDetectada = false;
   resetarFiltroUltrassonico();
   ultimaDeteccao = millis();
-  publicarStatusMQTT("decisao_executada");
+  notificarStatusBLE();
 }
 
 bool agendarDecisaoJSON(const String &payload) {
@@ -252,22 +308,12 @@ bool agendarDecisaoJSON(const String &payload) {
     return false;
   }
 
-  if (doc["tipo"].is<const char*>()) {
-    const char* tipo = doc["tipo"];
-    if (strcmp(tipo, "ping_ponte") == 0) {
-      const char* origem = doc["origem"] | "Painel Web Vercel";
-      Serial.printf("[MQTT] Painel Web CONECTADO via MQTT! (Origem: %s)\n", origem);
-      publicarStatusMQTT("ponte_conectada");
-      return true;
-    }
-  }
-
   int y = doc["y"] | -1;
-  const char* classe = doc["classe"] | (y == 0 ? "piramide" : (y == 1 ? "cubo" : "nao_reconhecido"));
-  const char* acao = doc["acao"] | (y == 0 ? "desviar_piramide" : (y == 1 ? "desviar_cubo" : "passar_reto"));
-  float confianca = doc["confianca"] | 1.0f;
+  const char* classe = doc["classe"] | "nao_reconhecido";
+  const char* acao = doc["acao"] | "passar_reto";
+  float confianca = doc["confianca"] | 0.0f;
 
-  Serial.printf("[IA/DECISAO] classe=%s | y=%d | acao=%s | confianca=%.2f%%\n",
+  Serial.printf("[IA] classe=%s | y=%d | acao=%s | confianca=%.2f%%\n",
                 classe, y, acao, confianca * 100.0f);
 
   ultimaClasseStr = String(classe);
@@ -279,76 +325,7 @@ bool agendarDecisaoJSON(const String &payload) {
   return true;
 }
 
-// ===================== MQTT (PUBSUBCLIENT) =====================
-String montarJsonStatus(const char* evento = "status") {
-  JsonDocument doc;
-  doc["peca_detectada"]      = pecaDetectada;
-  doc["status_esteira"]      = pecaDetectada ? "pausada_aguardando_ia" : "rodando";
-  doc["distancia_cm"]        = serialized(String(ultimaDistanciaCM, 1));
-  doc["ultima_decisao"]      = ultimaClasseStr;
-  doc["ultimo_y"]            = ultimoY;
-  doc["pecas_classificadas"] = totalPecasClassificadas;
-  doc["ip"]                  = WiFi.localIP().toString();
-  doc["evento"]              = evento;
-
-  String out;
-  serializeJson(doc, out);
-  return out;
-}
-
-void publicarStatusMQTT(const char* evento) {
-  if (!mqttClient.connected()) return;
-  String json = montarJsonStatus(evento);
-  mqttClient.publish(MQTT_TOPIC_STATUS, json.c_str(), true);
-}
-
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  String msg;
-  msg.reserve(length + 1);
-  for (unsigned int i = 0; i < length; i++) {
-    msg += (char)payload[i];
-  }
-  msg.trim();
-
-  Serial.printf("[MQTT] Mensagem recebida em [%s]: %s\n", topic, msg.c_str());
-
-  if (msg == "0" || msg == "1" || msg == "-1") {
-    int y = msg.toInt();
-    String simulado = "{\"y\":" + String(y) + ",\"classe\":\"" +
-                      (y == 0 ? "piramide" : (y == 1 ? "cubo" : "nao_reconhecido")) +
-                      "\",\"confianca\":1.0}";
-    agendarDecisaoJSON(simulado);
-    return;
-  }
-
-  agendarDecisaoJSON(msg);
-}
-
-void verificarConexaoMQTT() {
-  if (WiFi.status() != WL_CONNECTED) return;
-  if (mqttClient.connected()) return;
-
-  unsigned long agora = millis();
-  if (agora - ultimaTentativaMqtt < INTERVALO_MQTT_RECONN_MS) return;
-  ultimaTentativaMqtt = agora;
-
-  String clientId = "ESP32-Esteira-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-  Serial.printf("[MQTT] Conectando ao broker %s:%d como %s...\n",
-                MQTT_BROKER, MQTT_PORT, clientId.c_str());
-
-  if (mqttClient.connect(clientId.c_str())) {
-    Serial.println("[MQTT] CONECTADO ao Broker MQTT com sucesso!");
-    mqttClient.subscribe(MQTT_TOPIC_CMD);
-    Serial.printf("[MQTT] Inscrito em: %s\n", MQTT_TOPIC_CMD);
-    Serial.printf("[MQTT] Publicando status em: %s\n", MQTT_TOPIC_STATUS);
-    publicarStatusMQTT("esp32_online");
-  } else {
-    Serial.printf("[MQTT] Falha na conexao (rc=%d). Tentando novamente em 3s...\n",
-                  mqttClient.state());
-  }
-}
-
-// ===================== ENDPOINTS HTTP LOCAIS (MANTIDOS EM PARALELO) =====================
+// ===================== ENDPOINTS HTTP POR IP (COM CORS) =====================
 void enviarCORS() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -362,7 +339,15 @@ void handleOptions() {
 
 void handleStatus() {
   enviarCORS();
-  server.send(200, "application/json", montarJsonStatus("http_status"));
+  unsigned long agora = millis();
+  if (!ponteIpConectada || server.hasArg("connect") || (agora - ultimoPingIp > 5000)) {
+    ponteIpConectada = true;
+    Serial.printf("[PONTE IP] Painel conectado via IP! (Cliente: %s)\n",
+                  server.client().remoteIP().toString().c_str());
+  }
+  ultimoPingIp = agora;
+
+  server.send(200, "application/json", montarJsonStatus());
 }
 
 void handleDecisao() {
@@ -408,22 +393,24 @@ void setup() {
   acionarSG90(servoPiramide, PINO_SERVO_PIRAMIDE, 0);
   acionarSG90(servoCubo, PINO_SERVO_CUBO, 0);
 
+  // 1. Inicia o Bluetooth BLE imediatamente (funciona na universidade mesmo sem Wi-Fi!)
+  iniciarBluetoothBLE();
+
+  // 2. Tenta conectar ao Wi-Fi por até 8 segundos (para modo IP caso esteja disponível)
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.print("Conectando ao Wi-Fi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+  Serial.printf("Tentando Wi-Fi '%s' (timeout 8s para nao travar se estiver na Universidade)", WIFI_SSID);
+  unsigned long inicioWifi = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - inicioWifi < 8000)) {
+    delay(400);
     Serial.print(".");
   }
-  Serial.printf("\n[OK] Wi-Fi conectado! IP da ESP32: http://%s\n", WiFi.localIP().toString().c_str());
 
-  // Configura MQTT
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  mqttClient.setBufferSize(512);
-  mqttClient.setCallback(mqttCallback);
-  verificarConexaoMQTT();
-
-  acordarAPI();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\n[OK] Wi-Fi conectado! IP da ESP32: http://%s\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("\n[AVISO] Wi-Fi nao encontrado. Rodando 100% via BLUETOOTH BLE ('ESP32-Esteira-IA')!");
+  }
 
   server.on("/status",  HTTP_OPTIONS, handleOptions);
   server.on("/decisao", HTTP_OPTIONS, handleOptions);
@@ -432,16 +419,10 @@ void setup() {
   server.on("/decisao", HTTP_GET,     handleDecisao);
   server.begin();
 
-  Serial.println("[OK] WebServer HTTP + Cliente MQTT prontos!");
+  Serial.println("[OK] Sistema pronto! Pode conectar por Bluetooth ('ESP32-Esteira-IA') ou pelo IP.");
 }
 
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.reconnect();
-  }
-
-  verificarConexaoMQTT();
-  mqttClient.loop();
   server.handleClient();
 
   if (temDecisaoPendente) {
@@ -464,7 +445,6 @@ void loop() {
     executarDecisao(-1);
   }
 
-  // Leitura precisa do ultrassônico a cada 45 ms (sem eco residual e sem travar o loop)
   if (!pecaDetectada && (agora - ultimaLeituraSensor >= INTERVALO_ULTRASSONICO_MS)) {
     ultimaLeituraSensor = agora;
     float dist = atualizarUltrassonicoPrecisoCM();
@@ -475,12 +455,11 @@ void loop() {
       if (dist < 0.0f) {
         Serial.println("[ULTRASSONICO] Sem objeto proximo");
       } else {
-        Serial.printf("[ULTRASSONICO] Distancia estavel: %.1f cm (conf=%d/%d)\n",
+        Serial.printf("[ULTRASSONICO] Distancia: %.1f cm (conf=%d/%d)\n",
                       dist, contagemPecaConsecutiva, CONFIRMACOES_NECESSARIAS);
       }
     }
 
-    // Dispara apenas quando 2 leituras consecutivas confirmam a peça <= 15 cm
     if (contagemPecaConsecutiva >= CONFIRMACOES_NECESSARIAS &&
         dist > DISTANCIA_MIN_CM &&
         dist <= DISTANCIA_DETECCAO_CM &&
@@ -488,14 +467,16 @@ void loop() {
       pecaDetectada = true;
       ultimaDeteccao = agora;
       moverEsteira(false);
-      Serial.printf("[ULTRASSONICO] Peca CONFIRMADA a %.1f cm! Esteira pausada aguardando IA...\n", dist);
-      publicarStatusMQTT("peca_detectada");
-      ultimoEnvioMqtt = agora;
+      Serial.printf("[ULTRASSONICO] Peca detectada a %.1f cm! Esteira pausada aguardando IA...\n", dist);
+      // Notifica imediatamente via Bluetooth BLE se estiver conectado!
+      notificarStatusBLE();
+      ultimoNotifyBle = agora;
     }
   }
 
-  if (agora - ultimoEnvioMqtt >= INTERVALO_MQTT_STATUS_MS) {
-    ultimoEnvioMqtt = agora;
-    publicarStatusMQTT("heartbeat");
+  // Envia atualização periódica pelo Bluetooth BLE
+  if (bleClienteConectado && (agora - ultimoNotifyBle >= INTERVALO_BLE_NOTIFY_MS)) {
+    ultimoNotifyBle = agora;
+    notificarStatusBLE();
   }
 }

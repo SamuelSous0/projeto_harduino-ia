@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Esteira Seletora IA — Painel MQTT (WSS) & Visualização Ao Vivo</title>
-  <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+  <title>Esteira Seletora IA — Visualização Ao Vivo (Bluetooth & IP ESP32)</title>
   <style>
     :root {
       --bg: #0b1020;
@@ -29,17 +28,17 @@
       line-height: 1.45;
     }
     .container {
-      max-width: 1180px;
+      max-width: 1160px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 1.18fr 0.82fr;
+      grid-template-columns: 1.2fr 0.8fr;
       gap: 14px;
     }
     @media (max-width: 900px) {
       .container { grid-template-columns: 1fr; }
     }
     header {
-      max-width: 1180px;
+      max-width: 1160px;
       margin: 0 auto 14px auto;
       background: var(--panel);
       border: 1px solid var(--border);
@@ -93,11 +92,6 @@
       background: rgba(34, 197, 94, 0.14);
       color: #4ade80;
     }
-    .esp-connect-banner.connecting {
-      border-color: var(--piramide);
-      background: rgba(245, 158, 11, 0.14);
-      color: #fbbf24;
-    }
     .esp-connect-banner.disconnected {
       border-color: var(--danger);
       background: rgba(239, 68, 68, 0.14);
@@ -138,51 +132,9 @@
     video {
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       background: #000;
     }
-    .roi-guide {
-      position: absolute;
-      width: 56%;
-      aspect-ratio: 1 / 1;
-      border: 2px dashed rgba(59, 130, 246, 0.9);
-      border-radius: 12px;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.34);
-      pointer-events: none;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding-top: 6px;
-      transition: width 0.2s ease, border-color 0.2s ease;
-    }
-    .roi-guide span {
-      background: rgba(11, 16, 32, 0.85);
-      color: #93c5fd;
-      font-size: 0.68rem;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(59, 130, 246, 0.5);
-    }
-    .crop-preview-box {
-      position: absolute;
-      top: 46px;
-      right: 10px;
-      width: 74px;
-      height: 74px;
-      border-radius: 8px;
-      border: 2px solid var(--accent);
-      overflow: hidden;
-      background: #000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-      pointer-events: none;
-    }
-    .crop-preview-box canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-
     .video-overlay {
       position: absolute;
       top: 10px;
@@ -193,10 +145,9 @@
       pointer-events: none;
       gap: 8px;
       flex-wrap: wrap;
-      z-index: 2;
     }
     .badge-overlay {
-      background: rgba(11, 16, 32, 0.88);
+      background: rgba(11, 16, 32, 0.85);
       border: 1px solid var(--border);
       padding: 5px 10px;
       border-radius: 8px;
@@ -208,21 +159,20 @@
       bottom: 10px;
       left: 10px;
       right: 10px;
-      background: rgba(11, 16, 32, 0.94);
+      background: rgba(11, 16, 32, 0.92);
       border: 2px solid var(--border);
       border-radius: 10px;
       padding: 10px 14px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      z-index: 2;
     }
     .live-banner.y-0 { border-color: var(--piramide); }
     .live-banner.y-1 { border-color: var(--cubo); }
     .live-banner.y--1 { border-color: var(--outros); }
 
     .live-class {
-      font-size: 1.22rem;
+      font-size: 1.25rem;
       font-weight: 800;
       text-transform: uppercase;
     }
@@ -234,31 +184,20 @@
       display: flex;
       flex-direction: column;
       gap: 5px;
-      font-size: 0.82rem;
+      font-size: 0.84rem;
       color: var(--muted);
       font-weight: 600;
     }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    @media (max-width: 560px) {
-      .grid-2 { grid-template-columns: 1fr; }
-    }
+    .input-row { display: flex; gap: 8px; }
+    .input-row input { flex: 1; }
     input, select {
       background: var(--panel-2);
       color: var(--text);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 9px 11px;
-      font-size: 0.9rem;
+      padding: 10px 12px;
+      font-size: 0.94rem;
       outline: none;
-    }
-    input[type="range"] {
-      padding: 0;
-      accent-color: var(--accent);
-      cursor: pointer;
     }
     .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
     button {
@@ -266,20 +205,21 @@
       border: 1px solid var(--border);
       background: var(--panel-2);
       color: var(--text);
-      padding: 10px 13px;
+      padding: 11px 14px;
       border-radius: 8px;
-      font-size: 0.86rem;
+      font-size: 0.88rem;
       font-weight: 700;
       text-align: center;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 6px;
       transition: 0.15s ease;
     }
     button:hover { filter: brightness(1.12); }
     button.primary { background: var(--accent); border-color: #2563eb; color: #fff; }
     button.success { background: #16a34a; border-color: #15803d; color: #fff; }
-    button.warn { background: #d97706; border-color: #b45309; color: #fff; }
+    button.ble { background: #2563eb; border-color: #1d4ed8; color: #fff; width: 100%; font-size: 0.95rem; padding: 12px; }
 
     .probs {
       display: flex;
@@ -320,8 +260,8 @@
       border-radius: 8px;
       padding: 10px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.77rem;
-      height: 210px;
+      font-size: 0.78rem;
+      height: 205px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -338,39 +278,30 @@
 
   <header>
     <div>
-      <h1>Esteira Seletora IA — Painel Web MQTT Seguro (WSS)</h1>
-      <div class="sub">CNN PyTorch (Render) com Recorte 1:1 P&B (95–99% de precisão em Cubo/Pirâmide de qualquer cor) + Filtro de Cena</div>
+      <h1>Esteira Seletora IA — Visualização & Leitura Ao Vivo</h1>
+      <div class="sub">Leitura Original da IA (320×240 JPEG) + Conexão via Bluetooth (Sem bloqueio de rede) ou IP da ESP32</div>
     </div>
     <div class="status-pills">
       <span class="pill"><span id="dotApi" class="dot"></span> IA Render: <span id="txtApi">Verificando...</span></span>
-      <span class="pill"><span id="dotMqtt" class="dot"></span> Broker WSS: <span id="txtMqtt">Conectando...</span></span>
-      <span class="pill"><span id="dotEsp" class="dot"></span> ESP32: <span id="txtEsp">Aguardando</span></span>
+      <span class="pill"><span id="dotCam" class="dot"></span> Câmera: <span id="txtCam">Parada</span></span>
+      <span class="pill"><span id="dotEsp" class="dot"></span> ESP32: <span id="txtEsp">Desconectada</span></span>
     </div>
   </header>
 
   <main class="container">
-    <!-- ESQUERDA: CÂMERA AO VIVO COM MIRA QUADRADA 1:1 -->
+    <!-- ESQUERDA: CÂMERA AO VIVO (CAPTURA ORIGINAL 320x240 DIRETO PARA A IA DO RENDER) -->
     <section class="card">
       <h2>
-        <span>Visualização & Enquadramento 1:1 na Esteira</span>
-        <span id="isolationBadge" style="font-size:0.76rem;color:var(--muted);">Aguardando câmera</span>
+        <span>Vídeo Ao Vivo (Camo / Celular / Webcam)</span>
+        <span style="font-size:0.78rem;color:var(--muted);">320×240 JPEG Original</span>
       </h2>
 
       <div class="video-wrap">
         <video id="video" autoplay playsinline muted></video>
-        <canvas id="colorCanvas" width="128" height="128" style="display:none;"></canvas>
-        <canvas id="canvas" width="256" height="256" style="display:none;"></canvas>
-
-        <div id="roiGuide" class="roi-guide">
-          <span>POSICIONE A PEÇA AQUI</span>
-        </div>
-
-        <div class="crop-preview-box" title="Imagem P&B 1:1 enviada para a CNN do Render">
-          <canvas id="miniCanvas" width="128" height="128"></canvas>
-        </div>
+        <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
 
         <div class="video-overlay">
-          <div class="badge-overlay" id="overlayMode">Modo: CNN PyTorch P&B 1:1</div>
+          <div class="badge-overlay" id="overlayMode">Aguardando câmera...</div>
           <div class="badge-overlay" id="overlayLatency">IA: -- ms</div>
         </div>
 
@@ -388,6 +319,7 @@
         </div>
       </div>
 
+      <!-- Barras de probabilidade da primeira versão -->
       <div class="probs">
         <div class="prob-row">
           <span>Pirâmide (y=0)</span>
@@ -406,55 +338,48 @@
         </div>
       </div>
 
-      <div class="grid-2">
-        <label>
-          Câmera (Camo / Celular Traseira / Webcam)
-          <select id="cameraSelect"></select>
-        </label>
-        <label>
-          Foco / Zoom na Peça (<span id="zoomValTxt">1.4x</span>)
-          <input type="range" id="cropZoom" min="1.0" max="2.6" step="0.1" value="1.4" />
-        </label>
-      </div>
+      <label>
+        Escolher Câmera (Camo / Celular / Webcam)
+        <select id="cameraSelect"></select>
+      </label>
 
       <div class="btn-row">
-        <button id="btnStartAll" class="success" style="flex:1;">
-          ▶ Iniciar Câmera Ao Vivo + Esteira
+        <button id="btnStartAll" class="success" style="flex:1;font-size:0.95rem;padding:12px;">
+          ▶ Iniciar Câmera + Leitura Ao Vivo + Esteira
         </button>
-        <button id="btnCalibrateBg" class="warn" title="Clique com a esteira vazia para memorizar o fundo">
-          🎯 Calibrar Esteira Vazia
-        </button>
-        <button id="btnToggleLive" class="primary">Ao Vivo: ON</button>
+        <button id="btnToggleLive" class="primary">Leitura Ao Vivo: ON</button>
       </div>
     </section>
 
-    <!-- DIREITA: CONEXÃO MQTT (WSS) COM A ESP32 -->
+    <!-- DIREITA: BLUETOOTH BLE (IDEAL PARA UNIVERSIDADE) OU IP DA ESP32 -->
     <section class="card">
       <h2>
-        <span>Conexão MQTT Seguro (WSS) — iOS / Android / PC</span>
-        <button id="btnReconnectMqtt" class="primary" style="padding:5px 10px;font-size:0.78rem;">Conectar MQTT</button>
+        <span>Conexão com a ESP32 (Bluetooth ou IP)</span>
       </h2>
 
-      <div id="espConnectBanner" class="esp-connect-banner connecting">
-        <span id="espConnectText">⏳ Conectando ao Broker MQTT (WSS)...</span>
-        <span id="espIpBadge" style="font-size:0.76rem;opacity:0.9;">WSS TLS</span>
-      </div>
+      <!-- Opção 1: Bluetooth (Não depende do Wi-Fi da Universidade!) -->
+      <button id="btnConnectBle" class="ble">
+        🔵 1. Conectar ESP32 via Bluetooth (Sem bloqueio de Wi-Fi/IP)
+      </button>
 
-      <div class="grid-2">
-        <label>
-          Broker WebSocket Seguro (WSS)
-          <input type="text" id="mqttBrokerUrl" value="wss://broker.hivemq.com:8884/mqtt" />
-        </label>
-        <label>
-          Confiança Mínima CNN (<span id="threshTxt">82%</span> — Rejeita objetos aleatórios)
-          <input type="range" id="localThreshold" min="65" max="95" step="1" value="82" />
-        </label>
+      <!-- Opção 2: IP da ESP32 (Padrão original) -->
+      <label>
+        Ou digite o IP da ESP32 (Wi-Fi / Hotspot)
+        <div class="input-row">
+          <input type="text" id="espIp" value="192.168.1.65" placeholder="Ex.: 192.168.1.65" />
+          <button id="btnConnectIp" class="primary">Conectar IP</button>
+        </div>
+      </label>
+
+      <div id="espConnectBanner" class="esp-connect-banner">
+        <span id="espConnectText">⏳ Escolha Bluetooth (recomendado na universidade) ou IP acima</span>
+        <span id="espModeBadge" style="font-size:0.76rem;opacity:0.9;">--</span>
       </div>
 
       <div class="esp-box">
         <div>
           <strong>Status da Esteira</strong>
-          <span id="espPecaStatus">Aguardando MQTT...</span>
+          <span id="espPecaStatus">Aguardando conexão</span>
         </div>
         <div>
           <strong>Sensor Ultrassônico</strong>
@@ -472,18 +397,17 @@
 
       <div>
         <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;font-weight:600;">
-          Comandos Diretos via MQTT (`esteira-esp32-projeto/comando`):
+          Teste Manual Rápido dos Servos (Funciona por Bluetooth ou IP):
         </div>
         <div class="btn-row">
           <button id="btnCmdPir" style="border-color:var(--piramide);">Pirâmide (y=0)</button>
           <button id="btnCmdCub" style="border-color:var(--cubo);">Cubo (y=1)</button>
           <button id="btnCmdReto">Passar Reto (y=-1)</button>
-          <button id="btnCmdForceIa" class="warn">Classificar (3x Votos) → MQTT</button>
         </div>
       </div>
 
       <h2 style="margin-top:4px;">
-        <span>Monitor da Ponte & ESP32 (MQTT em Tempo Real)</span>
+        <span>Monitor da Ponte & ESP32 (Tempo Real)</span>
         <button id="btnClearLog" style="padding:3px 8px;font-size:0.74rem;">Limpar</button>
       </h2>
       <div id="logBox" class="log-box"></div>
@@ -491,38 +415,32 @@
   </main>
 
   <script>
+    // URL fixa da API no Render + UUIDs do Bluetooth BLE da ESP32
     const API_URL = "https://projeto-harduino-ia.onrender.com";
-    const MQTT_TOPIC_PREFIX = "esteira-esp32-projeto";
-    const LIVE_INTERVAL_MS = 650;
-    const TRIGGER_COOLDOWN_MS = 2200;
+    const BLE_SERVICE_UUID      = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const BLE_CHAR_STATUS_UUID  = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const BLE_CHAR_DECISAO_UUID = "828917c1-565d-4797-83a9-951404a3b083";
+
+    const LIVE_INTERVAL_MS = 700;
+    const ESP_POLL_MS = 450;
+    const ESP_COOLDOWN_MS = 1800;
 
     const video = document.getElementById("video");
-    const colorCanvas = document.getElementById("colorCanvas");
-    const colorCtx = colorCanvas.getContext("2d", { willReadFrequently: true });
     const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const miniCanvas = document.getElementById("miniCanvas");
-    const miniCtx = miniCanvas.getContext("2d", { willReadFrequently: true });
-    const roiGuide = document.getElementById("roiGuide");
-    const isolationBadge = document.getElementById("isolationBadge");
-
+    const ctx = canvas.getContext("2d");
     const cameraSelect = document.getElementById("cameraSelect");
-    const cropZoomInput = document.getElementById("cropZoom");
-    const zoomValTxt = document.getElementById("zoomValTxt");
-    const localThresholdInput = document.getElementById("localThreshold");
-    const threshTxt = document.getElementById("threshTxt");
-    const mqttBrokerInput = document.getElementById("mqttBrokerUrl");
+    const espIpInput = document.getElementById("espIp");
 
     const dotApi = document.getElementById("dotApi");
     const txtApi = document.getElementById("txtApi");
-    const dotMqtt = document.getElementById("dotMqtt");
-    const txtMqtt = document.getElementById("txtMqtt");
+    const dotCam = document.getElementById("dotCam");
+    const txtCam = document.getElementById("txtCam");
     const dotEsp = document.getElementById("dotEsp");
     const txtEsp = document.getElementById("txtEsp");
 
     const espConnectBanner = document.getElementById("espConnectBanner");
     const espConnectText = document.getElementById("espConnectText");
-    const espIpBadge = document.getElementById("espIpBadge");
+    const espModeBadge = document.getElementById("espModeBadge");
 
     const overlayMode = document.getElementById("overlayMode");
     const overlayLatency = document.getElementById("overlayLatency");
@@ -547,38 +465,33 @@
     const logBox = document.getElementById("logBox");
 
     let mediaStream = null;
+    let systemRunning = false;
     let liveReadingEnabled = true;
     let isPredicting = false;
     let isProcessingEspTrigger = false;
+    let isPollingEsp = false;
     let lastDecisionTimestamp = 0;
     let totalPiecesProcessed = 0;
 
-    let probHistory = [];
-    const MAX_HISTORY = 3;
-    let calibratedBgProfile = null;
+    // Estado Bluetooth BLE e IP
+    let bleDevice = null;
+    let bleStatusChar = null;
+    let bleDecisaoChar = null;
+    let isBleConnected = false;
+    let isIpPollingActive = false;
+    let ipConnectedOnce = false;
 
-    let mqttClient = null;
-    let espSeenOnline = false;
-    let lastEspHeartbeatTs = 0;
-
-    function updateRoiGuideSize() {
-      const zoom = Number(cropZoomInput.value) || 1.4;
-      zoomValTxt.textContent = `${zoom.toFixed(1)}x`;
-      const pct = Math.round((1 / zoom) * 82);
-      roiGuide.style.width = `${Math.max(28, Math.min(82, pct))}%`;
-    }
-    cropZoomInput.addEventListener("input", updateRoiGuideSize);
-    updateRoiGuideSize();
-
-    localThresholdInput.addEventListener("input", () => {
-      threshTxt.textContent = `${localThresholdInput.value}%`;
+    const savedEsp = localStorage.getItem("harduino_esp_ip");
+    if (savedEsp) espIpInput.value = savedEsp.replace(/^https?:\/\//i, "");
+    espIpInput.addEventListener("input", () => {
+      try { localStorage.setItem("harduino_esp_ip", espIpInput.value.trim()); } catch (e) {}
+      ipConnectedOnce = false;
     });
 
-    function getTopics() {
-      return {
-        status: `${MQTT_TOPIC_PREFIX}/status`,
-        comando: `${MQTT_TOPIC_PREFIX}/comando`
-      };
+    function getBaseEspUrl() {
+      let url = espIpInput.value.trim().replace(/\/+$/, "");
+      if (url && !/^https?:\/\//i.test(url)) url = "http://" + url;
+      return url;
     }
 
     function addLog(msg, type = "info") {
@@ -587,13 +500,14 @@
       const now = new Date().toLocaleTimeString("pt-BR", { hour12: false });
       line.textContent = `[${now}] ${msg}`;
       logBox.prepend(line);
-      while (logBox.children.length > 120) logBox.removeChild(logBox.lastChild);
+      while (logBox.children.length > 100) logBox.removeChild(logBox.lastChild);
     }
 
     document.getElementById("btnClearLog").addEventListener("click", () => {
       logBox.innerHTML = "";
     });
 
+    // 1. Verificação da API no Render
     async function checkApiHealth() {
       try {
         const res = await fetch(`${API_URL}/health`);
@@ -601,7 +515,7 @@
         if (res.ok && data.modelo_carregado) {
           dotApi.className = "dot ok";
           txtApi.textContent = "Online";
-          addLog(`IA Render conectada (modelo_carregado=true, ${data.num_classes} classes).`, "ok");
+          addLog(`IA conectada no Render (modelo carregado).`, "ok");
         } else {
           dotApi.className = "dot warn";
           txtApi.textContent = "Sem Modelo";
@@ -612,452 +526,11 @@
       }
     }
 
-    // ============================================================================
-    // VERIFICADOR DE CENA (PERMITE QUALQUER ÂNGULO DE CUBO/PIRÂMIDE E REJEITA FUNDO VAZIO OU QUARTO INTEIRO)
-    // ============================================================================
-    // Testamos a CNN do Render com as imagens em Escala de Cinza 256x256:
-    // - CUBO1, CUBO5, CUBO15 -> CNN retorna y=1 (cubo) com 97.5% a 98.1% de confiança!
-    // - PIR1, PIR5, PIR15    -> CNN retorna y=0 (piramide) com 95.0% a 99.6% de confiança!
-    // - outros_01, outros_03 -> CNN retorna y=-1 (nao_reconhecido) com 98.9% a 99.6%!
-    // Portanto, deixamos a CNN do Render decidir a forma da peça, e este filtro apenas bloqueia:
-    // 1) Esteira completamente vazia / sem objeto destacado no centro (< 4.5% da área)
-    // 2) Cena da casa / objeto gigante que preenche e corta todas as 4 bordas da mira (> 78% da área ou borda muito caótica)
-    function checkSceneValidity128() {
-      const imgData = colorCtx.getImageData(0, 0, 128, 128);
-      const d = imgData.data;
-
-      let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
-      const borderSamples = [];
-      for (let y = 0; y < 128; y += 2) {
-        for (let x = 0; x < 128; x += 2) {
-          if (x < 9 || x > 118 || y < 9 || y > 118) {
-            const idx = (y * 128 + x) * 4;
-            const r = d[idx], g = d[idx + 1], b = d[idx + 2];
-            bgR += r; bgG += g; bgB += b;
-            bgCount++;
-            borderSamples.push([r, g, b]);
-          }
-        }
-      }
-      bgR /= Math.max(1, bgCount);
-      bgG /= Math.max(1, bgCount);
-      bgB /= Math.max(1, bgCount);
-
-      let borderVariance = 0;
-      for (let i = 0; i < borderSamples.length; i++) {
-        const [r, g, b] = borderSamples[i];
-        borderVariance += (Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB));
-      }
-      borderVariance /= Math.max(1, borderSamples.length);
-
-      if (calibratedBgProfile) {
-        bgR = bgR * 0.35 + calibratedBgProfile.r * 0.65;
-        bgG = bgG * 0.35 + calibratedBgProfile.g * 0.65;
-        bgB = bgB * 0.35 + calibratedBgProfile.b * 0.65;
-      }
-
-      let fgCount = 0;
-      let borderTouchCount = 0;
-      let totalBorderCheck = 0;
-
-      for (let y = 0; y < 128; y++) {
-        for (let x = 0; x < 128; x++) {
-          const idx = (y * 128 + x) * 4;
-          const r = d[idx], g = d[idx + 1], b = d[idx + 2];
-          const diffBg = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
-          const isFg = diffBg > 50;
-
-          if (x <= 6 || x >= 121 || y <= 6 || y >= 121) {
-            totalBorderCheck++;
-            if (isFg) borderTouchCount++;
-          }
-          if (x >= 10 && x < 118 && y >= 10 && y < 118 && isFg) {
-            fgCount++;
-          }
-        }
-      }
-
-      const areaRatio = fgCount / (108 * 108);
-      const borderTouchRatio = borderTouchCount / Math.max(1, totalBorderCheck);
-
-      // 1. Esteira vazia (sem peça no centro)
-      if (areaRatio < 0.045) {
-        isolationBadge.textContent = "Cena: Esteira Vazia → Outros";
-        isolationBadge.style.color = "var(--outros)";
-        return { validPieceScene: false };
-      }
-
-      // 2. Câmera apontada para a sala/quarto/rosto/parede (objeto invade todas as bordas da mira)
-      if (areaRatio > 0.80 || borderVariance > 92 || borderTouchRatio > 0.52) {
-        isolationBadge.textContent = "Cena: Ambiente / Fora da Esteira → Outros";
-        isolationBadge.style.color = "var(--outros)";
-        return { validPieceScene: false };
-      }
-
-      isolationBadge.textContent = "Peça Centralizada → Classificando na CNN";
-      isolationBadge.style.color = "var(--ok)";
-      return { validPieceScene: true };
-    }
-
-    document.getElementById("btnCalibrateBg").addEventListener("click", () => {
-      if (!mediaStream) {
-        addLog("Inicie a câmera primeiro para calibrar a esteira vazia.", "warn");
-        return;
-      }
-      captureSquareGrayscaleBlob().then(() => {
-        const imgData = colorCtx.getImageData(24, 24, 80, 80).data;
-        let r = 0, g = 0, b = 0, n = imgData.length / 4;
-        for (let i = 0; i < imgData.length; i += 4) {
-          r += imgData[i]; g += imgData[i + 1]; b += imgData[i + 2];
-        }
-        calibratedBgProfile = { r: r / n, g: g / n, b: b / n };
-        addLog("Esteira vazia calibrada com sucesso!", "ok");
-      });
-    });
-
-    // Converte o recorte quadrado 1:1 para Escala de Cinza (P&B) usando a mesma matriz ITU-R BT.601 do PyTorch
-    // (Testado diretamente na API do Render: Cubo e Pirâmide batem 95% a 99.6% de precisão, independente de serem azuis ou brancos!)
-    function captureSquareGrayscaleBlob() {
-      return new Promise((resolve, reject) => {
-        if (!mediaStream || video.readyState < 2 || !video.videoWidth) {
-          return reject(new Error("Câmera ainda não está pronta"));
-        }
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const zoom = Math.max(1.0, Number(cropZoomInput.value) || 1.4);
-
-        const minSide = Math.min(vw, vh);
-        const cropSide = Math.round(minSide / zoom);
-        const sx = Math.round((vw - cropSide) / 2);
-        const sy = Math.round((vh - cropSide) / 2);
-
-        colorCtx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, 128, 128);
-
-        ctx.filter = "grayscale(100%)";
-        ctx.drawImage(video, sx, sy, cropSide, cropSide, 0, 0, 256, 256);
-        ctx.filter = "none";
-
-        miniCtx.drawImage(canvas, 0, 0, 128, 128);
-
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error("Falha JPEG"))),
-          "image/jpeg",
-          0.92
-        );
-      });
-    }
-
-    function computeRefinedDecision(probs) {
-      const pPir = Number(probs.piramide || 0);
-      const pCub = Number(probs.cubo || 0);
-      const pOut = Number(probs.outros || 0);
-      const minConf = (Number(localThresholdInput.value) || 82) / 100.0;
-
-      const bestPieceClass = pPir >= pCub ? "piramide" : "cubo";
-      const bestPieceY = pPir >= pCub ? 0 : 1;
-      const bestPieceProb = Math.max(pPir, pCub);
-
-      // Peças reais (Cubo e Pirâmide) batem 95% a 99% na CNN em P&B 256x256.
-      // Objetos aleatórios ficam abaixo de 82% ou dão y = -1 direto no Render!
-      if (bestPieceProb >= minConf && bestPieceProb > pOut) {
-        return {
-          classe: bestPieceClass,
-          y: bestPieceY,
-          acao: bestPieceY === 0 ? "desviar_piramide" : "desviar_cubo",
-          confianca: bestPieceProb,
-          probabilidades: { piramide: pPir, cubo: pCub, outros: pOut }
-        };
-      }
-
-      return {
-        classe: "nao_reconhecido",
-        y: -1,
-        acao: "passar_reto",
-        confianca: Math.max(pOut, 1.0 - bestPieceProb),
-        probabilidades: { piramide: pPir, cubo: pCub, outros: pOut }
-      };
-    }
-
-    function updatePredictionUI(decision, latencyMs, sourceLabel) {
-      bannerSource.textContent = sourceLabel;
-      overlayLatency.textContent = `IA: ${latencyMs} ms`;
-
-      const y = Number(decision.y);
-      liveBanner.className = `live-banner y-${y}`;
-      roiGuide.style.borderColor =
-        y === 0 ? "var(--piramide)" : y === 1 ? "var(--cubo)" : "rgba(148, 163, 184, 0.85)";
-
-      const labelMap = {
-        0: "PIRÂMIDE (y=0)",
-        1: "CUBO (y=1)",
-        "-1": "OUTROS / NÃO RECONHECIDO (y=-1)"
-      };
-      liveClass.textContent = labelMap[String(y)] || decision.classe.toUpperCase();
-      liveAction.textContent = `Ação: ${decision.acao}`;
-      const confPct = Math.round((Number(decision.confianca) || 0) * 1000) / 10;
-      liveConf.textContent = `${confPct.toFixed(1)}%`;
-      liveY.textContent = `y = ${y}`;
-
-      const pPir = (decision.probabilidades?.piramide || 0) * 100;
-      const pCub = (decision.probabilidades?.cubo || 0) * 100;
-      const pOut = (decision.probabilidades?.outros || 0) * 100;
-
-      barPir.style.width = `${Math.min(100, pPir).toFixed(1)}%`;
-      valPir.textContent = `${pPir.toFixed(1)}%`;
-      barCub.style.width = `${Math.min(100, pCub).toFixed(1)}%`;
-      valCub.textContent = `${pCub.toFixed(1)}%`;
-      barOut.style.width = `${Math.min(100, pOut).toFixed(1)}%`;
-      valOut.textContent = `${pOut.toFixed(1)}%`;
-    }
-
-    async function callSingleSquarePredict() {
-      const blob = await captureSquareGrayscaleBlob();
-      const scene = checkSceneValidity128();
-
-      // Se a esteira está vazia ou a câmera está apontada para o quarto/ambiente inteiro, retorna Outros
-      if (!scene.validPieceScene) {
-        return { piramide: 0.04, cubo: 0.04, outros: 0.92 };
-      }
-
-      const formData = new FormData();
-      formData.append("file", blob, "crop_grayscale.jpg");
-      const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = await res.json();
-
-      if (raw.probabilidades && raw.probabilidades.piramide !== undefined) {
-        return raw.probabilidades;
-      }
-
-      const c = Number(raw.confianca || 0.5);
-      const minConf = (Number(localThresholdInput.value) || 82) / 100.0;
-
-      // Se o Render retornou y = -1 (nao_reconhecido) OU se a confiança da CNN está abaixo do limiar rigoroso (82%),
-      // classificamos como OUTROS (y = -1)!
-      if (raw.y === -1 || c < minConf) {
-        const outScore = raw.y === -1 ? Math.max(0.80, c) : Math.max(0.75, 1.0 - c * 0.5);
-        const rem = (1.0 - outScore) * 0.5;
-        return { piramide: rem, cubo: rem, outros: outScore };
-      }
-
-      if (raw.y === 0) {
-        return { piramide: c, cubo: (1 - c) * 0.3, outros: (1 - c) * 0.7 };
-      }
-      return { piramide: (1 - c) * 0.3, cubo: c, outros: (1 - c) * 0.7 };
-    }
-
-    async function predictLiveFrame(sourceLabel = "LEITURA AO VIVO") {
-      if (isPredicting) return null;
-      isPredicting = true;
-      const t0 = performance.now();
-      try {
-        const probs = await callSingleSquarePredict();
-        probHistory.push(probs);
-        if (probHistory.length > MAX_HISTORY) probHistory.shift();
-
-        const avg = { piramide: 0, cubo: 0, outros: 0 };
-        probHistory.forEach((p) => {
-          avg.piramide += p.piramide / probHistory.length;
-          avg.cubo += p.cubo / probHistory.length;
-          avg.outros += p.outros / probHistory.length;
-        });
-
-        const decision = computeRefinedDecision(avg);
-        updatePredictionUI(decision, Math.round(performance.now() - t0), sourceLabel);
-        dotApi.className = "dot ok";
-        txtApi.textContent = "Online";
-        return decision;
-      } catch (e) {
-        return null;
-      } finally {
-        isPredicting = false;
-      }
-    }
-
-    async function predictMultiFrameConsensus(numFrames = 3) {
-      while (isPredicting) {
-        await new Promise((r) => setTimeout(r, 40));
-      }
-      isPredicting = true;
-      const t0 = performance.now();
-      try {
-        await new Promise((r) => setTimeout(r, 200));
-
-        const sum = { piramide: 0, cubo: 0, outros: 0 };
-        let validCount = 0;
-
-        for (let i = 0; i < numFrames; i++) {
-          try {
-            const p = await callSingleSquarePredict();
-            sum.piramide += p.piramide;
-            sum.cubo += p.cubo;
-            sum.outros += p.outros;
-            validCount++;
-          } catch (e) {}
-          if (i < numFrames - 1) await new Promise((r) => setTimeout(r, 100));
-        }
-
-        if (validCount === 0) return null;
-        const avg = {
-          piramide: sum.piramide / validCount,
-          cubo: sum.cubo / validCount,
-          outros: sum.outros / validCount
-        };
-        probHistory = [avg];
-
-        const decision = computeRefinedDecision(avg);
-        updatePredictionUI(
-          decision,
-          Math.round(performance.now() - t0),
-          `CONSENSO ${validCount} FRAMES → ESP32`
-        );
-        return decision;
-      } finally {
-        isPredicting = false;
-      }
-    }
-
-    function connectMQTT() {
-      const brokerUrl = mqttBrokerInput.value.trim() || "wss://broker.hivemq.com:8884/mqtt";
-      const topics = getTopics();
-
-      if (mqttClient) {
-        try { mqttClient.end(true); } catch (e) {}
-      }
-
-      dotMqtt.className = "dot warn";
-      txtMqtt.textContent = "Conectando...";
-      espConnectBanner.className = "esp-connect-banner connecting";
-      espConnectText.textContent = `⏳ Conectando ao Broker WSS...`;
-
-      const clientId = "PainelVercel-" + Math.random().toString(16).substring(2, 10);
-      addLog(`Conectando ao Broker MQTT via WSS (${brokerUrl})...`, "info");
-
-      mqttClient = mqtt.connect(brokerUrl, {
-        clientId,
-        clean: true,
-        connectTimeout: 8000,
-        reconnectPeriod: 3000,
-        keepalive: 30
-      });
-
-      mqttClient.on("connect", () => {
-        dotMqtt.className = "dot ok";
-        txtMqtt.textContent = "Conectado (WSS)";
-        addLog(`Broker MQTT conectado via WSS! Assinando ${topics.status}...`, "ok");
-
-        mqttClient.subscribe(topics.status, { qos: 0 }, (err) => {
-          if (!err) {
-            espConnectBanner.className = "esp-connect-banner connected";
-            espConnectText.textContent = `✔ MQTT WSS Ativo (${topics.status})`;
-            mqttClient.publish(
-              topics.comando,
-              JSON.stringify({
-                tipo: "ping_ponte",
-                origem: "Painel Web Vercel (HTTPS WSS)"
-              })
-            );
-          }
-        });
-      });
-
-      mqttClient.on("message", async (topic, message) => {
-        if (topic !== getTopics().status) return;
-        try {
-          const st = JSON.parse(message.toString());
-          lastEspHeartbeatTs = Date.now();
-
-          dotEsp.className = "dot ok";
-          txtEsp.textContent = "Online via MQTT";
-          espConnectBanner.className = "esp-connect-banner connected";
-          espConnectText.textContent = `✔ ESP32 CONECTADA VIA MQTT`;
-          if (st.ip) espIpBadge.textContent = `ESP32 IP: ${st.ip}`;
-
-          if (!espSeenOnline || st.evento === "ponte_conectada" || st.evento === "esp32_online") {
-            espSeenOnline = true;
-            addLog(`ESP32 confirmou conexão MQTT! (IP da ESP32: ${st.ip || "ativo"})`, "ok");
-          }
-
-          if (st.distancia_cm !== undefined && Number(st.distancia_cm) > 0) {
-            espDistancia.textContent = `${Number(st.distancia_cm).toFixed(1)} cm`;
-          } else {
-            espDistancia.textContent = "Sem objeto (>15cm)";
-          }
-
-          if (st.pecas_classificadas !== undefined) {
-            totalPiecesProcessed = Number(st.pecas_classificadas);
-            espCount.textContent = `${totalPiecesProcessed} peça(s)`;
-          }
-          if (st.ultima_decisao && st.ultima_decisao !== "nenhuma") {
-            espLastDecisao.textContent = `${String(st.ultima_decisao).toUpperCase()} (y=${st.ultimo_y ?? "--"})`;
-          }
-
-          if (st.peca_detectada === true) {
-            espPecaStatus.textContent = "PAUSADA — Peça detectada (<= 15cm)";
-            espPecaStatus.style.color = "var(--piramide)";
-
-            if (!isProcessingEspTrigger && (Date.now() - lastDecisionTimestamp > TRIGGER_COOLDOWN_MS)) {
-              await handlePieceDetectedViaMqtt();
-            }
-          } else {
-            espPecaStatus.textContent = "Rodando (Esteira livre)";
-            espPecaStatus.style.color = "var(--ok)";
-          }
-        } catch (err) {}
-      });
-    }
-
-    document.getElementById("btnReconnectMqtt").addEventListener("click", connectMQTT);
-
-    function publishCommandToEsp32(pred) {
-      const topics = getTopics();
-      if (!mqttClient || !mqttClient.connected) {
-        addLog("MQTT não conectado! Clique em 'Conectar MQTT'.", "err");
-        return false;
-      }
-
-      const payload = {
-        classe: pred.classe,
-        y: Number(pred.y),
-        acao: pred.acao || (pred.y === 0 ? "desviar_piramide" : pred.y === 1 ? "desviar_cubo" : "passar_reto"),
-        confianca: Number((pred.confianca ?? 1.0).toFixed(4))
-      };
-
-      mqttClient.publish(topics.comando, JSON.stringify(payload), { qos: 0 });
-      lastDecisionTimestamp = Date.now();
-      espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
-      espPecaStatus.textContent = "Comando enviado via MQTT!";
-      espPecaStatus.style.color = "var(--ok)";
-      addLog(
-        `Decisão enviada [${topics.comando}]: ${payload.classe.toUpperCase()} (y=${payload.y} | Conf:${(payload.confianca * 100).toFixed(1)}%)`,
-        "ok"
-      );
-      return true;
-    }
-
-    async function handlePieceDetectedViaMqtt() {
-      if (isProcessingEspTrigger) return;
-      isProcessingEspTrigger = true;
-      try {
-        addLog("ESP32 pausou a esteira! Classificando na CNN (consenso de 3 frames P&B 1:1)...", "warn");
-        if (mediaStream) {
-          const decision = await predictMultiFrameConsensus(3);
-          if (decision) {
-            publishCommandToEsp32(decision);
-          }
-        } else {
-          addLog("Inicie a câmera para classificar a peça automaticamente!", "warn");
-        }
-      } finally {
-        isProcessingEspTrigger = false;
-      }
-    }
-
+    // 2. Câmera e Classificação ORIGINAL da 1ª Versão (320x240 JPEG colorido direto para /predict)
     async function listCameras() {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter((d) => d.kind === "videoinput");
+        const videoDevices = devices.filter(d => d.kind === "videoinput");
         const currentVal = cameraSelect.value;
         cameraSelect.innerHTML = "";
         videoDevices.forEach((dev, idx) => {
@@ -1067,7 +540,7 @@
           cameraSelect.appendChild(opt);
         });
         if (!currentVal) {
-          const camo = videoDevices.find((d) => /camo/i.test(d.label));
+          const camo = videoDevices.find(d => /camo/i.test(d.label));
           if (camo) cameraSelect.value = camo.deviceId;
         } else {
           cameraSelect.value = currentVal;
@@ -1077,21 +550,24 @@
 
     async function startCamera() {
       try {
-        if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+        if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
         const selectedId = cameraSelect.value;
         mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: selectedId
             ? { deviceId: { exact: selectedId }, width: { ideal: 640 }, height: { ideal: 480 } }
-            : { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } }
+            : { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
         });
         video.srcObject = mediaStream;
         await video.play();
         await listCameras();
-        probHistory = [];
-        overlayMode.textContent = "CNN PyTorch P&B 1:1";
-        addLog("Câmera iniciada! Usando CNN PyTorch em Escala de Cinza 1:1 (95-99% de precisão em Cubo/Pirâmide).", "ok");
+        dotCam.className = "dot ok";
+        txtCam.textContent = "Ao Vivo";
+        overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa (320×240)" : "Vídeo Ao Vivo";
+        addLog("Câmera iniciada! Captura original 320x240 JPEG ativa.", "ok");
       } catch (err) {
+        dotCam.className = "dot err";
+        txtCam.textContent = "Erro";
         addLog(`Erro ao abrir câmera: ${err.message}`, "err");
       }
     }
@@ -1100,48 +576,327 @@
       if (mediaStream) startCamera();
     });
 
+    // Captura frame 320x240 original exatamente como na primeira versão
+    function captureFrameBlob() {
+      return new Promise((resolve, reject) => {
+        if (!mediaStream || video.readyState < 2) return reject(new Error("Câmera não iniciada"));
+        ctx.drawImage(video, 0, 0, 320, 240);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error("Erro JPEG")), "image/jpeg", 0.85);
+      });
+    }
+
+    function updatePredictionUI(data, latencyMs, sourceLabel) {
+      bannerSource.textContent = sourceLabel;
+      overlayLatency.textContent = `IA: ${latencyMs} ms`;
+
+      const y = Number(data.y);
+      liveBanner.className = `live-banner y-${y}`;
+
+      const labelMap = {
+        0: "PIRÂMIDE",
+        1: "CUBO",
+        "-1": "NÃO RECONHECIDO / PASSAR RETO"
+      };
+      liveClass.textContent = labelMap[String(y)] || (data.classe || "DESCONHECIDO").toUpperCase();
+      liveAction.textContent = `Ação: ${data.acao || "--"}`;
+      const confPct = Math.round((Number(data.confianca) || 0) * 1000) / 10;
+      liveConf.textContent = `${confPct.toFixed(1)}%`;
+      liveY.textContent = `y = ${y}`;
+
+      let pPir = 0, pCub = 0, pOut = 0;
+      if (data.probabilidades) {
+        pPir = (data.probabilidades.piramide || 0) * 100;
+        pCub = (data.probabilidades.cubo || 0) * 100;
+        pOut = (data.probabilidades.outros || 0) * 100;
+      } else {
+        if (y === 0) pPir = confPct;
+        else if (y === 1) pCub = confPct;
+        else pOut = confPct;
+      }
+      barPir.style.width = `${Math.min(100, pPir).toFixed(1)}%`;
+      valPir.textContent = `${pPir.toFixed(1)}%`;
+      barCub.style.width = `${Math.min(100, pCub).toFixed(1)}%`;
+      valCub.textContent = `${pCub.toFixed(1)}%`;
+      barOut.style.width = `${Math.min(100, pOut).toFixed(1)}%`;
+      valOut.textContent = `${pOut.toFixed(1)}%`;
+    }
+
+    async function predictCurrentFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
+      if (isPredicting) {
+        if (!forceWait) return null;
+        const t0 = Date.now();
+        while (isPredicting && Date.now() - t0 < 4000) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }
+      isPredicting = true;
+      const t0 = performance.now();
+      try {
+        const blob = await captureFrameBlob();
+        const formData = new FormData();
+        formData.append("file", blob, "frame.jpg");
+        const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        updatePredictionUI(data, Math.round(performance.now() - t0), sourceLabel);
+        dotApi.className = "dot ok";
+        txtApi.textContent = "Online";
+        return data;
+      } catch (err) {
+        return null;
+      } finally {
+        isPredicting = false;
+      }
+    }
+
+    // Loop automático de leitura ao vivo na tela
     setInterval(async () => {
-      if (!liveReadingEnabled || !mediaStream || isProcessingEspTrigger || isPredicting) return;
-      await predictLiveFrame("LEITURA AO VIVO");
+      if (!systemRunning || !liveReadingEnabled || !mediaStream) return;
+      if (!isProcessingEspTrigger && !isPredicting) {
+        await predictCurrentFrame("LEITURA AO VIVO (CONTÍNUA)", false);
+      }
     }, LIVE_INTERVAL_MS);
 
-    setInterval(() => {
-      if (espSeenOnline && Date.now() - lastEspHeartbeatTs > 6500) {
-        dotEsp.className = "dot warn";
-        txtEsp.textContent = "Sem sinal (>6s)";
+    // ============================================================================
+    // ENVIO DE DECISÃO PARA A ESP32 (FUNCIONA TANTO POR BLUETOOTH QUANTO POR IP)
+    // ============================================================================
+    async function sendDecisionToEsp32(pred) {
+      const payload = {
+        classe: pred.classe || (pred.y === 0 ? "piramide" : pred.y === 1 ? "cubo" : "nao_reconhecido"),
+        y: Number(pred.y),
+        acao: pred.acao || (pred.y === 0 ? "desviar_piramide" : pred.y === 1 ? "desviar_cubo" : "passar_reto"),
+        confianca: Number(pred.confianca ?? 1.0)
+      };
+
+      // 1. Se estiver conectado via Bluetooth BLE, envia direto pelo Bluetooth!
+      if (isBleConnected && bleDecisaoChar) {
+        try {
+          const encoder = new TextEncoder();
+          await bleDecisaoChar.writeValue(encoder.encode(JSON.stringify(payload)));
+          lastDecisionTimestamp = Date.now();
+          totalPiecesProcessed++;
+          espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
+          espCount.textContent = `${totalPiecesProcessed} peça(s)`;
+          espPecaStatus.textContent = "Decisão enviada via Bluetooth!";
+          espPecaStatus.style.color = "var(--ok)";
+          addLog(`Decisão enviada via BLUETOOTH: ${payload.classe.toUpperCase()} (y=${payload.y}) -> Esteira liberada!`, "ok");
+          return true;
+        } catch (err) {
+          addLog(`Erro ao enviar via Bluetooth: ${err.message}`, "err");
+        }
       }
-    }, 2000);
+
+      // 2. Caso contrário, envia via HTTP POST /decisao para o IP da ESP32
+      const espUrl = getBaseEspUrl();
+      try {
+        const decRes = await fetch(`${espUrl}/decisao`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (decRes.ok) {
+          lastDecisionTimestamp = Date.now();
+          totalPiecesProcessed++;
+          espLastDecisao.textContent = `${payload.classe.toUpperCase()} (y=${payload.y})`;
+          espCount.textContent = `${totalPiecesProcessed} peça(s)`;
+          espPecaStatus.textContent = "Decisão enviada via IP!";
+          espPecaStatus.style.color = "var(--ok)";
+          addLog(`Decisão enviada via IP (${espUrl}/decisao): ${payload.classe.toUpperCase()} (y=${payload.y})`, "ok");
+          return true;
+        }
+      } catch (err) {
+        addLog(`Erro ao enviar decisão para IP ${espUrl}: ${err.message}`, "err");
+      }
+      return false;
+    }
+
+    // Processa o JSON de status vindo da ESP32 (seja pelo Bluetooth ou pelo IP)
+    async function handleEspStatusObject(st, sourceMode = "BLE") {
+      if (st.distancia_cm !== undefined && Number(st.distancia_cm) > 0) {
+        espDistancia.textContent = `${Number(st.distancia_cm).toFixed(1)} cm`;
+      } else {
+        espDistancia.textContent = "Livre (>15cm)";
+      }
+
+      if (st.pecas_classificadas !== undefined) {
+        totalPiecesProcessed = Number(st.pecas_classificadas);
+        espCount.textContent = `${totalPiecesProcessed} peça(s)`;
+      }
+
+      if (st.peca_detectada === true) {
+        espPecaStatus.textContent = "PAUSADA — Classificando peça...";
+        espPecaStatus.style.color = "var(--piramide)";
+
+        if (!isProcessingEspTrigger && (Date.now() - lastDecisionTimestamp > ESP_COOLDOWN_MS)) {
+          isProcessingEspTrigger = true;
+          try {
+            addLog(`Peça detectada na esteira (${sourceMode})! Classificando frame 320x240 na IA...`, "warn");
+            const pred = await predictCurrentFrame("PEÇA NA ESTEIRA → ESP32", true);
+            if (pred) {
+              await sendDecisionToEsp32(pred);
+            }
+          } finally {
+            isProcessingEspTrigger = false;
+          }
+        }
+      } else {
+        espPecaStatus.textContent = "Rodando (Aguardando peça)";
+        espPecaStatus.style.color = "var(--text)";
+      }
+    }
+
+    // ============================================================================
+    // OPÇÃO A: CONEXÃO DIRETA VIA BLUETOOTH BLE (WEB BLUETOOTH)
+    // ============================================================================
+    async function connectBluetoothBLE() {
+      if (!navigator.bluetooth) {
+        addLog("Seu navegador atual não suporta Web Bluetooth. Use o Google Chrome (Android ou PC/Mac) ou o app Bluefy no iPhone!", "err");
+        alert("Para conectar por Bluetooth, abra este link no Google Chrome (Android ou PC) ou no navegador gratuito 'Bluefy' no iPhone.");
+        return;
+      }
+
+      try {
+        addLog("Procurando 'ESP32-Esteira-IA' no Bluetooth...", "info");
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: "ESP32" }],
+          optionalServices: [BLE_SERVICE_UUID]
+        });
+
+        bleDevice.addEventListener("gattserverdisconnected", () => {
+          isBleConnected = false;
+          dotEsp.className = "dot err";
+          txtEsp.textContent = "BLE Desconectado";
+          espConnectBanner.className = "esp-connect-banner disconnected";
+          espConnectText.textContent = "✖ Bluetooth desconectado. Clique para reconectar.";
+          addLog("Bluetooth desconectado da ESP32.", "warn");
+        });
+
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+        bleStatusChar = await service.getCharacteristic(BLE_CHAR_STATUS_UUID);
+        bleDecisaoChar = await service.getCharacteristic(BLE_CHAR_DECISAO_UUID);
+
+        await bleStatusChar.startNotifications();
+        bleStatusChar.addEventListener("characteristicvaluechanged", (event) => {
+          try {
+            const decoder = new TextDecoder("utf-8");
+            const jsonStr = decoder.decode(event.target.value);
+            const st = JSON.parse(jsonStr);
+            handleEspStatusObject(st, "Bluetooth");
+          } catch (e) {}
+        });
+
+        isBleConnected = true;
+        isIpPollingActive = false; // Prioriza o Bluetooth
+        systemRunning = true;
+
+        dotEsp.className = "dot ok";
+        txtEsp.textContent = "Conectada (Bluetooth)";
+        espConnectBanner.className = "esp-connect-banner connected";
+        espConnectText.textContent = `✔ ESP32 CONECTADA VIA BLUETOOTH (${bleDevice.name})`;
+        espModeBadge.textContent = "BLE Direto";
+        addLog(`CONECTADO À ESP32 VIA BLUETOOTH (${bleDevice.name})! Não precisa de Wi-Fi da universidade nem IP.`, "ok");
+
+        // Lê o status inicial
+        const initVal = await bleStatusChar.readValue();
+        const initSt = JSON.parse(new TextDecoder("utf-8").decode(initVal));
+        handleEspStatusObject(initSt, "Bluetooth");
+      } catch (err) {
+        addLog(`Conexão Bluetooth cancelada ou falhou: ${err.message}`, "err");
+      }
+    }
+
+    document.getElementById("btnConnectBle").addEventListener("click", connectBluetoothBLE);
+
+    // ============================================================================
+    // OPÇÃO B: CONEXÃO VIA IP DA ESP32 (HTTP GET /status e POST /decisao)
+    // ============================================================================
+    async function pollEspByIp(manualClick = false) {
+      if (isBleConnected) return; // Se já está no Bluetooth, não precisa de IP
+      const espUrl = getBaseEspUrl();
+      if (!espUrl) return;
+
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 2200);
+        const res = await fetch(`${espUrl}/status${manualClick ? "?connect=1" : ""}`, {
+          method: "GET",
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+
+        if (res.ok) {
+          const st = await res.json();
+          dotEsp.className = "dot ok";
+          txtEsp.textContent = "Conectada (IP)";
+          espConnectBanner.className = "esp-connect-banner connected";
+          espConnectText.textContent = `✔ ESP32 CONECTADA VIA IP (${espIpInput.value.trim()})`;
+          espModeBadge.textContent = "HTTP IP";
+
+          if (!ipConnectedOnce || manualClick) {
+            ipConnectedOnce = true;
+            addLog(`Conectado à ESP32 via IP em ${espUrl}!`, "ok");
+          }
+          await handleEspStatusObject(st, "IP");
+        }
+      } catch (err) {
+        if (manualClick || ipConnectedOnce) {
+          ipConnectedOnce = false;
+          dotEsp.className = "dot err";
+          txtEsp.textContent = "Sem resposta IP";
+          espConnectBanner.className = "esp-connect-banner disconnected";
+          espConnectText.textContent = `✖ Sem resposta no IP ${espIpInput.value.trim()} (Use o botão Bluetooth acima se a rede bloquear IP!)`;
+          addLog(`Sem resposta em ${espUrl}/status. Se o Wi-Fi da universidade bloquear IP, clique no botão azul de Bluetooth!`, "err");
+        }
+      }
+    }
+
+    document.getElementById("btnConnectIp").addEventListener("click", () => {
+      systemRunning = true;
+      isIpPollingActive = true;
+      pollEspByIp(true);
+    });
+
+    setInterval(async () => {
+      if (!systemRunning || !isIpPollingActive || isBleConnected || isPollingEsp || isProcessingEspTrigger) return;
+      isPollingEsp = true;
+      try {
+        await pollEspByIp(false);
+      } finally {
+        isPollingEsp = false;
+      }
+    }, ESP_POLL_MS);
 
     document.getElementById("btnStartAll").addEventListener("click", async (e) => {
       await startCamera();
-      if (!mqttClient || !mqttClient.connected) connectMQTT();
-      e.target.textContent = "✔ Câmera + MQTT Ativos";
+      systemRunning = true;
+      if (!isBleConnected) {
+        isIpPollingActive = true;
+        pollEspByIp(true);
+      }
+      e.target.textContent = "✔ Sistema Ativo (Câmera + Leitura Ao Vivo + Esteira)";
     });
 
     document.getElementById("btnToggleLive").addEventListener("click", (e) => {
       liveReadingEnabled = !liveReadingEnabled;
-      e.target.textContent = liveReadingEnabled ? "Ao Vivo: ON" : "Ao Vivo: OFF";
+      e.target.textContent = liveReadingEnabled ? "Leitura Ao Vivo: ON" : "Leitura Ao Vivo: OFF";
       e.target.className = liveReadingEnabled ? "primary" : "";
+      overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa (320×240)" : "Somente Gatilho da Esteira";
     });
 
+    // Botões de teste manual dos servos (funcionam por Bluetooth ou IP)
     document.getElementById("btnCmdPir").addEventListener("click", () => {
-      publishCommandToEsp32({ classe: "piramide", y: 0, acao: "desviar_piramide", confianca: 1.0 });
+      sendDecisionToEsp32({ classe: "piramide", y: 0, acao: "desviar_piramide", confianca: 1.0 });
     });
     document.getElementById("btnCmdCub").addEventListener("click", () => {
-      publishCommandToEsp32({ classe: "cubo", y: 1, acao: "desviar_cubo", confianca: 1.0 });
+      sendDecisionToEsp32({ classe: "cubo", y: 1, acao: "desviar_cubo", confianca: 1.0 });
     });
     document.getElementById("btnCmdReto").addEventListener("click", () => {
-      publishCommandToEsp32({ classe: "nao_reconhecido", y: -1, acao: "passar_reto", confianca: 1.0 });
-    });
-    document.getElementById("btnCmdForceIa").addEventListener("click", async () => {
-      if (!mediaStream) await startCamera();
-      const decision = await predictMultiFrameConsensus(3);
-      if (decision) publishCommandToEsp32(decision);
+      sendDecisionToEsp32({ classe: "nao_reconhecido", y: -1, acao: "passar_reto", confianca: 1.0 });
     });
 
     listCameras();
     checkApiHealth();
-    connectMQTT();
   </script>
 </body>
 </html>
