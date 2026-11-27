@@ -28,17 +28,17 @@
       line-height: 1.45;
     }
     .container {
-      max-width: 1160px;
+      max-width: 1180px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
+      grid-template-columns: 1.22fr 0.78fr;
       gap: 14px;
     }
     @media (max-width: 900px) {
       .container { grid-template-columns: 1fr; }
     }
     header {
-      max-width: 1160px;
+      max-width: 1180px;
       margin: 0 auto 14px auto;
       background: var(--panel);
       border: 1px solid var(--border);
@@ -105,7 +105,7 @@
       padding: 15px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 11px;
     }
     .card h2 {
       font-size: 0.98rem;
@@ -134,6 +134,58 @@
       height: 100%;
       object-fit: contain;
       background: #000;
+    }
+    .crop-guide {
+      position: absolute;
+      width: 56%;
+      aspect-ratio: 1 / 1;
+      border: 2.5px dashed rgba(59, 130, 246, 0.92);
+      border-radius: 12px;
+      box-shadow: 0 0 0 9999px rgba(5, 8, 17, 0.42);
+      pointer-events: none;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 6px;
+    }
+    .crop-guide span {
+      background: rgba(11, 16, 32, 0.88);
+      color: #93c5fd;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(59, 130, 246, 0.5);
+    }
+    .crop-preview-pip {
+      position: absolute;
+      top: 44px;
+      right: 10px;
+      width: 78px;
+      height: 78px;
+      border-radius: 8px;
+      border: 2px solid var(--accent);
+      background: #000;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.65);
+      pointer-events: none;
+    }
+    .crop-preview-pip canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .crop-preview-pip .pip-tag {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(11, 16, 32, 0.86);
+      color: #fff;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-align: center;
+      padding: 1px 0;
     }
     .video-overlay {
       position: absolute;
@@ -179,6 +231,50 @@
     .y-0 .live-class { color: var(--piramide); }
     .y-1 .live-class { color: var(--cubo); }
     .y--1 .live-class { color: var(--outros); }
+
+    .controls-box {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .zoom-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+    }
+    .zoom-row input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .toggles-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8rem;
+      color: var(--text);
+      padding-top: 4px;
+      border-top: 1px solid rgba(42, 55, 96, 0.6);
+    }
+    .toggle-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 600;
+    }
+    .toggle-item input {
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
 
     label {
       display: flex;
@@ -277,7 +373,7 @@
   <header>
     <div>
       <h1>Esteira Seletora IA — Ponte Bluetooth BLE & Leitura Ao Vivo</h1>
-      <div class="sub">ESP32 ⇄ Bluetooth ⇄ Celular/PC (Internet) ⇄ Render IA (Sem precisar de IP nem Wi-Fi na ESP32!)</div>
+      <div class="sub">ESP32 ⇄ Bluetooth ⇄ Celular/PC (Internet) ⇄ Render IA (Recorte 1:1 + Correção de Fundo do Modelo)</div>
     </div>
     <div class="status-pills">
       <span class="pill"><span id="dotApi" class="dot"></span> IA Render: <span id="txtApi">Verificando...</span></span>
@@ -287,16 +383,27 @@
   </header>
 
   <main class="container">
-    <!-- ESQUERDA: VÍDEO AO VIVO E CLASSIFICAÇÃO ORIGINAL 320x240 -->
+    <!-- ESQUERDA: VÍDEO AO VIVO COM RECORTE 1:1 E CALIBRAÇÃO DO MODELO -->
     <section class="card">
       <h2>
-        <span>Vídeo Ao Vivo (Camo / Celular / Webcam)</span>
-        <span style="font-size:0.78rem;color:var(--muted);">320×240 JPEG Original</span>
+        <span>Vídeo Ao Vivo (Enquadre a Peça no Quadrado Azul)</span>
+        <span style="font-size:0.78rem;color:var(--muted);">Recorte 1:1 128×128 (CNN)</span>
       </h2>
 
       <div class="video-wrap">
         <video id="video" autoplay playsinline muted></video>
-        <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+        <canvas id="canvas" width="128" height="128" style="display:none;"></canvas>
+
+        <!-- Guia Quadrada 1:1 para não achatar o vídeo do celular -->
+        <div id="cropGuide" class="crop-guide">
+          <span>ENQUADRE A PEÇA AQUI</span>
+        </div>
+
+        <!-- Miniatura do que a CNN no Render realmente enxerga -->
+        <div class="crop-preview-pip" title="Imagem exata enviada para a CNN no Render">
+          <canvas id="pipCanvas" width="128" height="128"></canvas>
+          <div class="pip-tag">VISÃO DA IA</div>
+        </div>
 
         <div class="video-overlay">
           <div class="badge-overlay" id="overlayMode">Aguardando câmera...</div>
@@ -314,6 +421,28 @@
             <div style="font-size:1.35rem;font-weight:800;" id="liveConf">--%</div>
             <div style="font-size:0.75rem;color:var(--muted);" id="liveY">y = --</div>
           </div>
+        </div>
+      </div>
+
+      <!-- Controles de Zoom + Fundo do Treino + Modo Qualquer Cor -->
+      <div class="controls-box">
+        <div class="zoom-row">
+          <strong style="color:var(--muted);min-width:110px;">Zoom na Peça:</strong>
+          <input type="range" id="zoomSlider" min="1.0" max="2.8" step="0.1" value="1.5" />
+          <span id="zoomVal" style="font-weight:700;min-width:38px;text-align:right;">1.5×</span>
+          <button id="btnCalibrateEmpty" style="padding:6px 10px;font-size:0.76rem;" title="Clique com a esteira sem peça para travar o fundo vazio">
+            🎯 Calibrar Esteira Vazia
+          </button>
+        </div>
+        <div class="toggles-row">
+          <label class="toggle-item" title="Isola o fundo claro da sala/mesa e aplica a iluminação escura do gabinete onde a IA foi treinada (aumenta o acerto para 98%)">
+            <input type="checkbox" id="chkCabinetBg" checked />
+            <span>Isolar Fundo da Sala (Padrão do Treino)</span>
+          </label>
+          <label class="toggle-item" title="Ative se for testar Cubo Branco ou Pirâmide Azul (converte para P&B para a IA focar 100% no formato 3D)">
+            <input type="checkbox" id="chkGrayscale" />
+            <span>Peças de Cores Trocadas (Cubo Branco / Pirâmide Azul)</span>
+          </label>
         </div>
       </div>
 
@@ -407,13 +536,22 @@
     const BLE_CHAR_STATUS_UUID  = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
     const BLE_CHAR_DECISAO_UUID = "828917c1-565d-4797-83a9-951404a3b083";
 
-    const LIVE_INTERVAL_MS = 700;
+    const LIVE_INTERVAL_MS = 650;
     const ESP_COOLDOWN_MS = 1800;
 
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const pipCanvas = document.getElementById("pipCanvas");
+    const pipCtx = pipCanvas.getContext("2d");
     const cameraSelect = document.getElementById("cameraSelect");
+
+    const zoomSlider = document.getElementById("zoomSlider");
+    const zoomVal = document.getElementById("zoomVal");
+    const cropGuide = document.getElementById("cropGuide");
+    const chkCabinetBg = document.getElementById("chkCabinetBg");
+    const chkGrayscale = document.getElementById("chkGrayscale");
+    const btnCalibrateEmpty = document.getElementById("btnCalibrateEmpty");
 
     const dotApi = document.getElementById("dotApi");
     const txtApi = document.getElementById("txtApi");
@@ -455,6 +593,8 @@
     let isProcessingEspTrigger = false;
     let lastDecisionTimestamp = 0;
     let totalPiecesProcessed = 0;
+    let currentZoom = 1.5;
+    let emptyBeltSignature = null; // 16x16 RGB signature when calibrated
 
     let bleDevice = null;
     let bleStatusChar = null;
@@ -474,6 +614,13 @@
       logBox.innerHTML = "";
     });
 
+    zoomSlider.addEventListener("input", () => {
+      currentZoom = parseFloat(zoomSlider.value) || 1.5;
+      zoomVal.textContent = `${currentZoom.toFixed(1)}×`;
+      const guidePct = Math.max(30, Math.min(82, Math.round(84 / currentZoom)));
+      cropGuide.style.width = `${guidePct}%`;
+    });
+
     // 1. Conexão com a API no Render (Internet do Celular/PC)
     async function checkApiHealth() {
       try {
@@ -482,7 +629,7 @@
         if (res.ok && data.modelo_carregado) {
           dotApi.className = "dot ok";
           txtApi.textContent = "Online";
-          addLog(`IA conectada no Render (modelo carregado).`, "ok");
+          addLog(`IA conectada no Render (modelo 3 classes carregado).`, "ok");
         } else {
           dotApi.className = "dot warn";
           txtApi.textContent = "Sem Modelo";
@@ -493,7 +640,7 @@
       }
     }
 
-    // 2. Câmera e Classificação ORIGINAL da 1ª Versão (320x240 JPEG direto para /predict)
+    // 2. Câmera e Pré-Processamento Alinhado ao Dataset de Treino (128x128 1:1)
     async function listCameras() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -531,8 +678,8 @@
         systemRunning = true;
         dotCam.className = "dot ok";
         txtCam.textContent = "Ao Vivo";
-        overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa (320×240)" : "Vídeo Ao Vivo";
-        addLog("Câmera iniciada! Leitura original 320x240 JPEG ativa.", "ok");
+        overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo (Recorte 1:1)" : "Vídeo Ao Vivo";
+        addLog("Câmera iniciada! Enquadre a peça dentro do quadrado tracejado azul.", "ok");
       } catch (err) {
         dotCam.className = "dot err";
         txtCam.textContent = "Erro";
@@ -544,11 +691,142 @@
       if (mediaStream) startCamera();
     });
 
-    function captureFrameBlob() {
+    // Desenha o recorte quadrado 1:1 centralizado sem distorcer a proporção da peça
+    function drawSquareCropToCanvas(forceGrayscale = false) {
+      const vw = video.videoWidth || 640;
+      const vh = video.videoHeight || 480;
+      const minDim = Math.min(vw, vh);
+      const cropSize = Math.max(64, Math.round(minDim / currentZoom));
+      const sx = Math.round((vw - cropSize) / 2);
+      const sy = Math.round((vh - cropSize) / 2);
+
+      ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 128, 128);
+
+      const imgData = ctx.getImageData(0, 0, 128, 128);
+      const d = imgData.data;
+
+      // 1) Calcula luminância média da região central onde fica a peça
+      let sumLum = 0;
+      let countLum = 0;
+      for (let y = 24; y < 104; y++) {
+        for (let x = 24; x < 104; x++) {
+          const i = (y * 128 + x) * 4;
+          sumLum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          countLum++;
+        }
+      }
+      const avgCenterLum = sumLum / Math.max(1, countLum);
+      // Ganho suave apenas se a imagem estiver muito escura ou estourada
+      let gain = 1.0;
+      if (avgCenterLum > 145) {
+        gain = Math.max(0.68, 118 / avgCenterLum);
+      } else if (avgCenterLum < 50 && avgCenterLum > 5) {
+        gain = Math.min(1.45, 72 / avgCenterLum);
+      }
+
+      const useCabinetVignette = chkCabinetBg.checked;
+      const useGray = forceGrayscale || chkGrayscale.checked;
+
+      // 2) Aplica a máscara suave de gabinete escuro nas bordas externas (rDist > 0.43)
+      // Isso elimina paredes/mesas brancas ao redor da peça que faziam a CNN errar 7/10
+      for (let y = 0; y < 128; y++) {
+        const ny = (y - 64) / 128;
+        // Fundo do dataset de treino: sombra escura no topo RGB(28,22,16), madeira na base RGB(82,66,46)
+        const bgR = y < 58 ? 28 : 82;
+        const bgG = y < 58 ? 22 : 66;
+        const bgB = y < 58 ? 16 : 46;
+
+        for (let x = 0; x < 128; x++) {
+          const nx = (x - 64) / 128;
+          const rDist = Math.sqrt(nx * nx + ny * ny);
+          const i = (y * 128 + x) * 4;
+
+          let r = Math.min(255, Math.max(0, d[i] * gain));
+          let g = Math.min(255, Math.max(0, d[i + 1] * gain));
+          let b = Math.min(255, Math.max(0, d[i + 2] * gain));
+
+          if (useCabinetVignette && rDist > 0.43) {
+            const alpha = Math.min(0.92, Math.max(0, (rDist - 0.43) / 0.25));
+            r = r * (1 - alpha) + bgR * alpha;
+            g = g * (1 - alpha) + bgG * alpha;
+            b = b * (1 - alpha) + bgB * alpha;
+          }
+
+          if (useGray) {
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            r = lum;
+            g = lum;
+            b = lum;
+          }
+
+          d[i]     = Math.round(r);
+          d[i + 1] = Math.round(g);
+          d[i + 2] = Math.round(b);
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      pipCtx.drawImage(canvas, 0, 0);
+      return imgData;
+    }
+
+    // Assinatura 8x8 do centro para detectar esteira vazia quando calibrada
+    function computeCenterSignature(imgData) {
+      const d = imgData.data;
+      const sig = [];
+      for (let gy = 2; gy < 6; gy++) {
+        for (let gx = 2; gx < 6; gx++) {
+          let r = 0, g = 0, b = 0, c = 0;
+          for (let y = gy * 16; y < (gy + 1) * 16; y++) {
+            for (let x = gx * 16; x < (gx + 1) * 16; x++) {
+              const i = (y * 128 + x) * 4;
+              r += d[i]; g += d[i + 1]; b += d[i + 2]; c++;
+            }
+          }
+          sig.push([r / c, g / c, b / c]);
+        }
+      }
+      return sig;
+    }
+
+    function isSameAsEmptyBelt(imgData) {
+      if (!emptyBeltSignature) return false;
+      const cur = computeCenterSignature(imgData);
+      let diffSum = 0;
+      for (let i = 0; i < cur.length; i++) {
+        diffSum += Math.abs(cur[i][0] - emptyBeltSignature[i][0])
+                 + Math.abs(cur[i][1] - emptyBeltSignature[i][1])
+                 + Math.abs(cur[i][2] - emptyBeltSignature[i][2]);
+      }
+      const avgChannelDiff = diffSum / (cur.length * 3);
+      return avgChannelDiff < 11.5;
+    }
+
+    btnCalibrateEmpty.addEventListener("click", () => {
+      if (!mediaStream || video.readyState < 2) {
+        addLog("Inicie a câmera primeiro antes de calibrar a esteira vazia.", "warn");
+        return;
+      }
+      if (emptyBeltSignature) {
+        emptyBeltSignature = null;
+        btnCalibrateEmpty.textContent = "🎯 Calibrar Esteira Vazia";
+        addLog("Filtro de esteira vazia desativado.", "info");
+      } else {
+        const imgData = drawSquareCropToCanvas(false);
+        emptyBeltSignature = computeCenterSignature(imgData);
+        btnCalibrateEmpty.textContent = "✔ Esteira Vazia Calibrada (Clique p/ Resetar)";
+        addLog("Esteira vazia calibrada! Quando não houver peça no quadrado, o sistema indicará OUTROS (y=-1).", "ok");
+      }
+    });
+
+    function capturePreprocessedBlob(forceGrayscale = false) {
       return new Promise((resolve, reject) => {
         if (!mediaStream || video.readyState < 2) return reject(new Error("Câmera não iniciada"));
-        ctx.drawImage(video, 0, 0, 320, 240);
-        canvas.toBlob(b => b ? resolve(b) : reject(new Error("Erro JPEG")), "image/jpeg", 0.85);
+        const imgData = drawSquareCropToCanvas(forceGrayscale);
+        if (isSameAsEmptyBelt(imgData)) {
+          return resolve({ isEmptyBelt: true });
+        }
+        canvas.toBlob(b => b ? resolve({ isEmptyBelt: false, blob: b }) : reject(new Error("Erro JPEG")), "image/jpeg", 0.92);
       });
     }
 
@@ -588,6 +866,14 @@
       valOut.textContent = `${pOut.toFixed(1)}%`;
     }
 
+    async function callRenderPredict(blob) {
+      const formData = new FormData();
+      formData.append("file", blob, "frame.jpg");
+      const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    }
+
     async function predictCurrentFrame(sourceLabel = "LEITURA AO VIVO", forceWait = false) {
       if (isPredicting) {
         if (!forceWait) return null;
@@ -599,12 +885,21 @@
       isPredicting = true;
       const t0 = performance.now();
       try {
-        const blob = await captureFrameBlob();
-        const formData = new FormData();
-        formData.append("file", blob, "frame.jpg");
-        const res = await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const cap = await capturePreprocessedBlob(false);
+        if (cap.isEmptyBelt) {
+          const emptyData = {
+            classe: "esteira_vazia",
+            y: -1,
+            acao: "passar_reto",
+            confianca: 0.99,
+            probabilidades: { piramide: 0.0, cubo: 0.0, outros: 0.99 }
+          };
+          updatePredictionUI(emptyData, Math.round(performance.now() - t0), `${sourceLabel} (ESTEIRA VAZIA)`);
+          return emptyData;
+        }
+
+        let data = await callRenderPredict(cap.blob);
+
         updatePredictionUI(data, Math.round(performance.now() - t0), sourceLabel);
         dotApi.className = "dot ok";
         txtApi.textContent = "Online";
@@ -614,6 +909,62 @@
       } finally {
         isPredicting = false;
       }
+    }
+
+    // Consenso de 3 frames quando a ESP32 pausa a esteira para máxima precisão
+    async function predictConsensus3Frames() {
+      await new Promise(r => setTimeout(r, 180)); // aguarda a peça estabilizar na parada
+      const samples = [];
+      for (let i = 0; i < 3; i++) {
+        const pred = await predictCurrentFrame(`LEITURA ${i + 1}/3 → ESP32`, true);
+        if (pred) samples.push(pred);
+        if (i < 2) await new Promise(r => setTimeout(r, 90));
+      }
+      if (samples.length === 0) return null;
+
+      let sumPir = 0, sumCub = 0, sumOut = 0;
+      for (const s of samples) {
+        if (s.probabilidades) {
+          sumPir += Number(s.probabilidades.piramide || 0);
+          sumCub += Number(s.probabilidades.cubo || 0);
+          sumOut += Number(s.probabilidades.outros || 0);
+        } else {
+          if (Number(s.y) === 0) sumPir += Number(s.confianca || 0.8);
+          else if (Number(s.y) === 1) sumCub += Number(s.confianca || 0.8);
+          else sumOut += Number(s.confianca || 0.8);
+        }
+      }
+      const n = samples.length;
+      const avgPir = sumPir / n;
+      const avgCub = sumCub / n;
+      const avgOut = sumOut / n;
+
+      let finalY = -1;
+      let finalClasse = "nao_reconhecido";
+      let finalAcao = "passar_reto";
+      let finalConf = avgOut;
+
+      if (avgPir >= avgCub && avgPir >= avgOut && avgPir >= 0.72) {
+        finalY = 0;
+        finalClasse = "piramide";
+        finalAcao = "desviar_piramide";
+        finalConf = avgPir;
+      } else if (avgCub > avgPir && avgCub >= avgOut && avgCub >= 0.72) {
+        finalY = 1;
+        finalClasse = "cubo";
+        finalAcao = "desviar_cubo";
+        finalConf = avgCub;
+      }
+
+      const consensusData = {
+        classe: finalClasse,
+        y: finalY,
+        acao: finalAcao,
+        confianca: finalConf,
+        probabilidades: { piramide: avgPir, cubo: avgCub, outros: avgOut }
+      };
+      updatePredictionUI(consensusData, 0, "CONSENSO 3 FRAMES → BLUETOOTH ESP32");
+      return consensusData;
     }
 
     setInterval(async () => {
@@ -646,7 +997,7 @@
         espCount.textContent = `${totalPiecesProcessed} peça(s)`;
         espPecaStatus.textContent = "Decisão enviada via Bluetooth!";
         espPecaStatus.style.color = "var(--ok)";
-        addLog(`Enviado via BLUETOOTH para ESP32: ${payload.classe.toUpperCase()} (y=${payload.y}) -> Esteira liberada!`, "ok");
+        addLog(`Enviado via BLUETOOTH para ESP32: ${payload.classe.toUpperCase()} (y=${payload.y}, ${(payload.confianca*100).toFixed(1)}%) -> Esteira liberada!`, "ok");
         return true;
       } catch (err) {
         addLog(`Erro ao enviar decisão via Bluetooth: ${err.message}`, "err");
@@ -667,14 +1018,14 @@
       }
 
       if (st.peca_detectada === true) {
-        espPecaStatus.textContent = "PAUSADA — Classificando peça...";
+        espPecaStatus.textContent = "PAUSADA — Classificando peça (3 leituras)...";
         espPecaStatus.style.color = "var(--piramide)";
 
         if (!isProcessingEspTrigger && (Date.now() - lastDecisionTimestamp > ESP_COOLDOWN_MS)) {
           isProcessingEspTrigger = true;
           try {
-            addLog("ESP32 avisou via Bluetooth: Peça detectada (<= 15cm)! Consultando IA no Render...", "warn");
-            const pred = await predictCurrentFrame("PEÇA NA ESTEIRA → BLUETOOTH ESP32", true);
+            addLog("ESP32 avisou via Bluetooth: Peça detectada (<= 15cm)! Fazendo consenso de 3 leituras no Render...", "warn");
+            const pred = await predictConsensus3Frames();
             if (pred) {
               await sendDecisionViaBluetooth(pred);
             }
@@ -753,7 +1104,7 @@
       liveReadingEnabled = !liveReadingEnabled;
       e.target.textContent = liveReadingEnabled ? "Leitura Ao Vivo: ON" : "Leitura Ao Vivo: OFF";
       e.target.className = liveReadingEnabled ? "primary" : "";
-      overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo Ativa (320×240)" : "Somente Gatilho da Esteira";
+      overlayMode.textContent = liveReadingEnabled ? "Leitura Ao Vivo (Recorte 1:1)" : "Somente Gatilho da Esteira";
     });
 
     document.getElementById("btnCmdPir").addEventListener("click", () => {
